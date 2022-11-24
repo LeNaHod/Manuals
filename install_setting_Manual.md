@@ -685,6 +685,23 @@ sudo service mysql status
 
 ## 11.airflow 설치
 
+```bash
+1. ~/.bashrc 에 # 에어플로우추가 
+
+pip로 설치하기 전 bashrc에 이걸 먼저 추가해주자
+
+↓sudo vim ~/.bashrc 에 추가 
+
+# airflow
+export PATH=$PATH:/home/계정명/.local/bin
+
+source ~/.bashrc 로 적용!
+```
+
+## 12.elk7 / elk8설치
+
+
+
 -----
 
 2022-11-15 - 2022-11-16 설치오류:

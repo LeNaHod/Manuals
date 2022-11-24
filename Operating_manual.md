@@ -155,3 +155,11 @@ flush privileges;
 - revoke grant option : 권한해제
 - show grants for '계정명'@'localhost / %' : 해당계정 권한 조회
 ```
+
+## CURL 사용 & RESTFUL 사용
+
+★장고에서도 REST사용가능 
+[장고REST](https://www.django-rest-framework.org/)
+
+GET:GET방식으로 통신하면 서버에서 데이터를 **받아올것**임
+POST:POST 방식으로 통신한다고하면 서버에 데이터를 추가,생성 할것이다.만들어진 데이터까지 번호를할당하고 제일 마지막에만들어진 데이터 뒤에 ID가 할당된다.
