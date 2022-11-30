@@ -153,7 +153,11 @@ flush privileges;
 
 - with grant option : grant명령어 사용할수있는 권한추가
 - revoke grant option : 권한해제
-- show grants for '계정명'@'localhost / %' : 해당계정 권한 조회
+- show grants for '계정명'@'localhost / % / ip주소' : 해당계정 권한 조회
+- select user()  OR select current_user(); : 현재접속해있는 유저정보 출력
+- show databases; : 현재생성되어있는 데이터베이스 목록
+
+
 ```
 
 ## CURL 사용 & RESTFUL 사용

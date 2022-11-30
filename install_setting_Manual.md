@@ -580,7 +580,7 @@ grant all privileges on *.* to '계정명'@'%' with grant option;
 ★with grant option을 추가로 적어줄 경우 GRANT 명령어를 사용할 수 있는 권한도 할당된다. 
 
 flush privileges;
-->권한 적용
+->계정생성, 테이블생성, 권한 적용
 
 6.test테이블을 생성하고 빠져나오자
 
@@ -698,7 +698,45 @@ export PATH=$PATH:/home/계정명/.local/bin
 source ~/.bashrc 로 적용!
 ```
 
-## 12.elk7 / elk8설치
+## 12. VSCODE설치해보자!
+
+
+[리눅스용vs](https://code.visualstudio.com/docs/setup/linux)
+
+```python
+
+위의 링크에서 두번째 박스에있는 내용을 하나하나 따라하면 된다. 
+
+sudo apt-get install wget gpg
+
+wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > packages.microsoft.gpg
+
+sudo install -D -o root -g root -m 644 packages.microsoft.gpg /etc/apt/keyrings/packages.microsoft.gpg
+
+sudo sh -c 'echo "deb [arch=amd64,arm64,armhf signed-by=/etc/apt/keyrings/packages.microsoft.gpg] https://packages.microsoft.com/repos/code stable main" > /etc/apt/sources.list.d/vscode.list'
+
+rm -f packages.microsoft.gpg
+
+
+sudo apt install apt-transport-https
+
+sudo apt update
+
+sudo apt install code # or code-insiders
+
+----------------------- ▲위의 세개만 입력해도 되긴하다 아래는 자유
+sudo apt update
+
+sudo apt upgrade -y
+
+sudo apt install code
+
+위의 설치가 정상적으로 된다면, 터미널에서 code 라고 입력하면, vscode가 실행된다.
+
+```
+
+
+## 13.elk7 / elk8설치
 
 
 
