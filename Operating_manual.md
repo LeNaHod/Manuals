@@ -167,3 +167,101 @@ flush privileges;
 
 GET:GET방식으로 통신하면 서버에서 데이터를 **받아올것**임
 POST:POST 방식으로 통신한다고하면 서버에 데이터를 추가,생성 할것이다.만들어진 데이터까지 번호를할당하고 제일 마지막에만들어진 데이터 뒤에 ID가 할당된다.
+
+# 리눅스 기본명령어
+
+rm ~*.확장자명 :특정 확장자로 끝나는 파일 모두삭제
+rm -f 파일명 : 강제삭제
+
+-----
+
+
+# 크롤링 
+
+|패키지명|설명|
+|:---:|:---:|
+|셀레니움|동적인것(ajax, js를 쓰는 경우)을 크롤링해오는데 자주사용. 문법이 쉽고 매크로처럼 웹을 브라우저를 조작.</br>속도가 느림|
+|뷰티플스푸|정적인것을 크롤링해오는데 자주사용. requset와 같이 흔히 사용하는 라이브러리</br>.속도가 빠름|
+
+
+## 셀레니움
+
+동적인것이란 무엇일까?
+ajax,js쓰는경우가 가장 대표적인 동적페이지이다.
+
+1.그 페이지의 어떤요소를 크롤링해오는데 값이 아무리해도 나오지않음
+
+2.주소가바뀌지않음(비동기)
+
+크롬 / 파이어폭스 /사파리 를 이용할수있다.
+
+각 웹브라우저 버전에맞는 웹드라이버를 설치해줘야하며, 사파리는 기본탑재이므로 설치X
+다만 WebdriverMnager가 나와서 크롬이나 파이어폭스도 버전에 자유롭게 사용할수있게되었다.
+
+사람바이사람이지만 문법이 좀 더 간편하다.
+
+|웹브라우저명|설명|
+|:---:|:---:|
+|크롬| 윈도우에서 사용 추천. 웹드라이버 $PATH를 설정해줘야함|
+|파이어폭스|리눅스에서 사용추천. 웹드라이버 $PATH를 설정해줘야하고, 리눅스환경에서 사용 시</BR>디스플레이 문제때문에 파이어폭스 옵션에 --headless를 추가해줘야한다.|
+|사파리|위의 두 브라우저와달리 **option값을 따로 지정해주지않아도된다**,**$PATH지정x**</br>단,우클릭으로 개발자용>원격 자동화 허용 활성화 필수!|
+
+
+- option("--headless") : 웹브라우저를 열지않고 크롤링할때 사용한다.
+- wait(시간) : 웹페이지 로딩을 지정시간동안 기다려준다. 지정시간동안 로딩이끝나면 다음코드실행
+- click() : .click앞에있는 **특정요소**를 클릭해준다.
+
+셀레니움 사용시 import 목록과 기타 기능
+
+|이름|설명|예시|
+|:---:|:---:|:---:|
+|By|from셀레니움.웹드라이버.common.by import By|웹드라이버변수.find_elements</BR>(By.Class_name,요소네임)|
+|wait|from셀레니움.웹드라이버.support.ui import WebDriverWait|WebDriverWait(dirver, 5)|
+|webderiver|from셀레니움 import webdriver|웹드라이버변수=webdriver.Firefox(service=서비스변수,</BR> options=옵션변수)
+|
+|Service|from셀레니움.webdriver.firefox.service import Service|서비스변수=</BR>Service('geckodriver의$PATH값(경로)')|
+|option|from셀레니움.webdriver import FirefoxOptions|옵션변수 = FirefoxOptions()</br>옵션변수.add_argument("--headless")|
+|find_element|하나만 선택해서 가져온다|-|
+|find_elements|여러개를 선택해서 가져온다.값이없으면 **빈 리스트를 반환**|-|
+|웹드라이버변수명.get('주소')|get안에있는 주소에접속|-|
+
+---
+
+**By모듈에대한 설명**
+
+|이름|설명|
+|:---:|:---:|
+|By.TAG_NAME|태그로 선택한다|
+|By.CSS_SELECTOR|CSS선택자를 이용해서 선택한다|DIV.WORDTEST il (DIV클래스명이 WORDTEST이고</BR>그 안의 il태그들을 가져온다) '>' ( < 자식태그하나만가져오는것) 공백으로 구분하면 하위개념 |
+|By.LINK_TEXT|지정한 텍스트가있는 태그를 찾아 A태그의 링크를찾아옴|
+|By.CLASS_NAME|클래스네임으로 선택한다 .클래스네임|
+|By.ID|아이디로 선택한다 #아이디|
+|By.NAME|name속성을 이용한다|
+|By.PARTIAL_LINK_TEXT|링크텍스트 일부만 일치하는것으로 링크를가져옴|
+|By.XPATH|XAPTH를 이용한다|
+
+
+
+## 뷰티풀스푸
+
+리퀘스트와 단짝. 기본적으로 
+
+```python
+import 리퀘스트
+from bs4 import 뷰티풀스푸
+
+url='주소'
+
+resp(변수)=requset.get(url)
+soup=뷰티플스푸(resp.text,'html.parser')
+
+위와같이쓰는데,
+
+select
+select_one
+find
+find_all
+
+네가지가있다. 차이점은 셀레니움과같음. 단수/복수 의 차이
+
+```

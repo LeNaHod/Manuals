@@ -509,19 +509,6 @@ zeppelin-daemon.sh start
 select * from 테이블명
 
 ```
-## 8-1 Zeppelin commons버전을 낮추기(보류)
-
-나는 commons-lang3을 설치하기싫다 하면 쓸수있는방법이다.
-
-Interpreter설정부분에서 spark검색->edit
-
-name:
-spark.driver.extraClassPath
-
-value:
-/usr/lib/spark.jars/commons-lang-2.6.jar 
-
-->spark와 zeppelin 어느쪽이 2.6버전인지물어보기
 
 ## 9.mysql 설치
 
@@ -738,6 +725,88 @@ sudo apt install code
 
 ## 13.elk7 / elk8설치
 
+
+
+## 14.셀레니움과 크롬,크롬드라이버 설치하기
+
+우분투에서 크롤링 해오기위해 셀레니움과 크롬드라이버를 설치하자.
+
+```bash
+
+1.아래내용을 차례대로 입력
+
+wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add - 
+
+sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list' 
+
+sudo apt-get update 
+
+sudo apt-get install google-chrome-stable 
+
+
+정상적으로 설치 시, 
+
+google-chrome --version  버전을 입력했을때
+
+Google Chrome 108.0.5359.71 
+
+설치 시점에서 가장 최신버전의 크롬이 설치되는걸 볼수있다.
+
+2. 크롬드라이버 설치
+
+https://sites.google.com/a/chromium.org/chromedriver/
+
+현재버전에 맞는 버전을 선택하여 다운로드를 클릭
+
+Index of /버전 /  < 이런페이지로 이동되면,
+
+운영체제에맞는 (지금은 리눅스설치니까 리눅스64)링크를 복사하여 wget으로 설치
+
+wget https://chromedriver.storage.googleapis.com/108.0.5359.71/chromedriver_linux64.zip
+
+라이브러리 설치
+
+sudo pip install xlrd (셀레니움이아니라 엑셀파일을 읽기위한 패키지)
+
+sudo apt-get install xvfb  (가상디스플레이 버퍼가없는 리눅스환경에서 셀레니움을 사용하기위한 패키지)
+
+sudo pip install pyvirtualdisplay (xvfb를 사용하게 도와주는 패키지)
+
+3.셀레니움 설치
+
+pip install selenium
+
+
+```
+## 파이어폭스로 셀레니움쓰기
+
+geckodriver이용
+
+
+pip install webdriver-manager 설치하고
+
+https://github.com/mozilla/geckodriver/releases 가서 다운로드받아준다.
+
+echo $PATH 를 입력해서 나오는 경로가 코드에서 사용할 geckodriver 의 경로이다.
+(/usr/bin추천)
+
+셀레니움이있고, geckoderiver를 다운받았으면 바로 사용하면된다.
+
+★ 단, --headless 옵션을줘야함 (리눅스같은경우는 디스플레이문제때문에)
+
+EX)
+
+from selenium.webdriver import FirefoxOptions
+
+opts = FirefoxOptions()
+opts.add_argument("--headless")		>GUI디스플레이 부분
+browser = webdriver.Firefox(service=webdriver_service, options=opts)
+
+browser.get(가져올url주소)
+
+변수 = browser.find_elements(By.조건 , 상세조건 )
+
+find_elements는 리스트를 반환하고 없으면 빈 리스트를반환한다. 그냥 element는 한개만.
 
 
 -----
