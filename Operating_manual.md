@@ -210,6 +210,7 @@ ajax,js쓰는경우가 가장 대표적인 동적페이지이다.
 - option("--headless") : 웹브라우저를 열지않고 크롤링할때 사용한다.
 - wait(시간) : 웹페이지 로딩을 지정시간동안 기다려준다. 지정시간동안 로딩이끝나면 다음코드실행
 - click() : .click앞에있는 **특정요소**를 클릭해준다.
+- sleep(시간) :from time import sleep. wait과 import해오는 모듈자체도 다를뿐더러 sleep은 **프로세스자체를 지연**시킨다. (wait은 다음코드 실행까지의 지연시간)
 
 셀레니움 사용시 import 목록과 기타 기능
 
@@ -224,6 +225,23 @@ ajax,js쓰는경우가 가장 대표적인 동적페이지이다.
 |find_element|하나만 선택해서 가져온다|-|
 |find_elements|여러개를 선택해서 가져온다.값이없으면 **빈 리스트를 반환**|-|
 |웹드라이버변수명.get('주소')|get안에있는 주소에접속|-|
+
+**Wait 상세**
+
+Implicitly Wait (암묵적 대기)
+
+- Selenium에서만 사용되는 특수한 메서드
+- 지정한 시간만큼 대기 (브라우저에서 사용되는 엔진 자체에서 파싱되는 시간을 기다림)
+- 모든 요소에 적용
+- sleep보다 낭비되는 시간이 적음
+- driver.implicitly_wait(10) < 별도의 import 작업 x
+
+Explicitly Wait (명시적 대기)
+
+- Selenium에서만 사용되는 특수한 메서드
+- 조건이 True가 될 때 까지 지정한 시간만큼 대기
+- 특정 요소에 적용
+- from selenium.webdriver.support import expected_conditions as EC
 
 ---
 
@@ -240,8 +258,97 @@ ajax,js쓰는경우가 가장 대표적인 동적페이지이다.
 |By.PARTIAL_LINK_TEXT|링크텍스트 일부만 일치하는것으로 링크를가져옴|
 |By.XPATH|XAPTH를 이용한다|
 
+## 셀레니움으로 웹페이지 스크롤 업/다운 조작
+
+웹드라이버변수.**execute_script()** 을 이용하자!
+
+execute_script(js작성)메서드는 ()안의 js가 어떤이벤트를 작성하느냐에따라
+
+여러 동적이벤트를 발생시킬수있다. 화면을 조작하는 js를 작성해보자
+
+- 화면상 스크롤 위치 이동 : scrollTo(x,Y) ,scrollTo(x,Y+number)
+- 화면 최하단으로 스크롤 이동 : scrollTo(0, document.body.scrollHeight)
+- 화면을 움직이고 페이지 로드 기다리기 : time.sleep(second)
+
+```python
+예시
+
+SCROLL_PAUASE_TIME=1.5
+browser.get('자동스크롤하려는 주소') 
+while True:
+    sleep(SCROLL_PAUASE_TIME) ->  그냥 sleep(1.5)도 가능
+    #스크롤을 내려준다
+    last_height = browser.execute_script("return document.body.scrollHeight") -> 끝인지 더내릴곳이있는지 판단하기위해 
+    browser.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+    sleep(SCROLL_PAUASE_TIME)
+    new_height = browser.execute_script("return document.body.scrollHeight")
+    if new_height == last_height:
+        browser.execute_script(
+            "window.scrollTo(0, document.body.scrollHeight);")
+        sleep(SCROLL_PAUASE_TIME)
+        new_height = browser.execute_script(			->끝인지 더 내릴곳이있는지 판단하기위해. last와 new 높이를 비교한다. 
+            "return document.body.scrollHeight")
+        if new_height == last_height:		->그리고 같으면 더 내릴곳이없으니까 while문을 멈춘다. 그 전까지는 무한반복
+            break
+        else:
+            last_height = new_height
+            continue
+
+출처:https://softmagic.tistory.com/120
+
+```
+
+## 원하는 포맷으로 CSV저장
+
+```python
+
+output = 'test.csv' #저장할 파일명 | 최종 아웃풋 파일명
+csv_open = open(output, 'w+', encoding='utf-8') #불러온파일에 덮어쓰기한다.
+csv_writer = csv.writer(csv_open)#불러온파일에 덮어쓰기한다
+csv_writer.writerow(('키1','키2','키3', '키4')) # 컬럼같은 개념. 타이틀row의 인자값
 
 
+    키1     = li.find('span', {'class':'요소클래스명'}).text 
+    키2     = li.find('span', {'class':'요소클래스명'}).text
+    키3    = li.find('span', {'class':'요소클래스명'}).text
+    키4 = check_image_url() #이미지 uri저장부분
+
+# CSV 에 저장하자
+csv_writer.writerow((키1, 키2, 키3, 키4))
+
+```
+
+## CSS선택자-속성선택자
+
+TAG/CLASS/ID/속성 선택자중 속성선택자를 알아보자
+
+```PYTHON
+#div클래스네임이 abc이고 그안의 a태그의 href(링크)주소를 가져와보자
+
+title=browser.find_element(By.CSS_SELECTOR,'abc a')
+print(title.get_attribute('href'))
+#링크주소를 가져오는데 왜 by.link_text 을 안쓰냐면 text내용이없다는 가정하에 링크를가져온다.link_text는 text내용이있어야 가져올수있으니까.
+
+※중요 .get_attribute() 속성은 elements에 적용되지않는다. 왜냐면, 한개당 속성이 여러개가아니고 하나이기때문에 찾는요소1개=찾는요소속성 1 개 이렇게 생각해야한다.
+고로, 단일로찾을거면 위와같이, 여러개를 찾을거면 아래와같이 작성해야한다.
+
+#elements로 링크 여러개를가져오자
+title = browser.find_elements(By.CLASS_NAME, 'abc a')
+
+for element in title:
+    print(element.get_attribute('href'))
+
+★for문으로 돌려주면 단일 한줄, 한줄씩 실행되는거니까 여러개의 링크를 가져올수있다.
+
+#title이 가져오는 총 개수를알고싶을때
+ print(len(title)) 
+
+
+#title의 text부분(text == html_text == inner_text)만 가져오고싶을때
+for comment in title:
+	print(comment.text)
+
+```
 ## 뷰티풀스푸
 
 리퀘스트와 단짝. 기본적으로 
@@ -265,3 +372,32 @@ find_all
 네가지가있다. 차이점은 셀레니움과같음. 단수/복수 의 차이
 
 ```
+
+# Python
+
+## 리스트 중복제거하기
+
+- functools.reduce() : 리스트의 기존순서를 유지하면서 중복을 제거한다. for문처럼 리스트를 돌면서 현재값이 리스트안에 없는값이면 리스트에 추가시키는 방식으로 동작한다. 별도의 import 필요
+
+        from functools import reduce
+
+        array = ["F", "D", "A", "C", "A", "C", "F", "B", "C", "E", "D", "C", "F", "A", "B", "E", "F", "E"]
+
+        result = reduce(lambda acc, cur: acc if cur in acc else acc+[cur], array, [])
+
+-  dict.fromkeys(): 기존 순서를 유지하면서 중복을제거한다. (파이썬 3.7부터 dict가 순서를 보존함)
+
+            
+        result = list(dict.fromkeys(array))
+    
+  
+- for문 :기존순서를 유지하면서 중복을제거한다.리듀스와 같은방식으로 중복제거하는데 **인덱스의 순서대로 for문을 순환** 하여 기존순서가 유지됨
+ 
+        result = []
+        for value in array:
+            if value not in result:
+                result.append(value)
+
+- set() : **기존순서를 유지하지 않고**중복을 제거한다.중복을 허용하지않고 순서가없는 특성을 이용해 중복제거를한것. 
+
+        result = list(set(array))
