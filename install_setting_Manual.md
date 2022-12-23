@@ -213,7 +213,7 @@ hadoop설치떄와 비슷한 방식으로 진행한다.
 sudo vim ~/.bashrc 아래내용 추가 후 source ~/.bashrc
 
 # spark
-export SPARK_HOME=/home/na/spark
+export SPARK_HOME=/home/계정명/spark
 export PATH=$PATH:$SPARK_HOME/bin:$SPARK_HOME/sbin
 
 1.cd $SPARK_HOME/conf 
@@ -265,7 +265,7 @@ spark릴리즈 버전에 맞는 pyspark설치
 2. cat RELELASE 
 ->현재 spark버전확인.
 
-3. pip install pyspark == 현재스파크버전
+3. pip install pyspark == 현재스파크버전(위의 spark설치버전에는 3.2.2로설치하는것을권장)
 
 4. vim spark_app.py 파일 오픈
 
@@ -355,7 +355,7 @@ cp zeppelin-site.xml.template zeppelin-site.xml
 
 vim zeppelin-site.xml
 
-#.adder/.prot 값 변경
+#.adder/.port 값 변경
 <property>
 .
 .
@@ -425,7 +425,7 @@ Notebook ->Create new note로 폴더를 하나 생성하자
 
 셸뜨는것을 확인하고 
 
-%사용할인터프리터($pyspark)
+%사용할인터프리터(%pyspark)
 
 cardA=spark.read.formt('포맷').option("header(컬럼명유무)","t/f").option("inferSchema(스키마를 저장된대로 가져온다.컬럼타입을 알아서가져온다고 이해하면됨)","t/f").load("가져올데이터경로/파일명(*.확장자 이면 지정 확장자로끝나는거 다가져옴)").show()
 
@@ -639,9 +639,9 @@ spark.jars /usr/share/java/mysql-connector-j-8.0.31.jar
 
 user='계정명'
 password='비밀번호'
-url='jdbc:mysql://localhost:(mysql포트번호)/mysql'
+url='jdbc:mysql://localhost:(mysql포트번호)/데이터베이스명'
 driver='com.mysql.cj.jdbc.Driver'
-dbtable='테이블 이름'
+dbtable='데이터베이스 안의 테이블 이름'
 
 testDf=spark.read.format("jdbc").option("user",user).option("password",password).option("url",url).option("driver",driver).option("dbtable",dbtable).load()
 ->위에서 선언한 변수들을 사용하고있다.
@@ -673,16 +673,164 @@ sudo service mysql status
 ## 11.airflow 설치
 
 ```bash
-1. ~/.bashrc 에 # 에어플로우추가 
+>Successful installation requires a Python 3 environment.
+>Only pip installation is currently officially supported.
 
-pip로 설치하기 전 bashrc에 이걸 먼저 추가해주자
+->python 3에서만 동작하고 pip만 공식이다.
 
-↓sudo vim ~/.bashrc 에 추가 
+
+(사전작업 / 켜져있는거 다끄기)
+
+zeppelin-daemon.sh stop
+stop-all.sh
+
+[에어플로우링크](https://airflow.apache.org/docs/apache-airflow/stable/start.html)
+
+
+1. ~/.bashrc 에 에어플로우추가
+
+sudo vim ~/.bashrc 에 추가 
 
 # airflow
 export PATH=$PATH:/home/계정명/.local/bin
 
 source ~/.bashrc 로 적용!
+
+2. pip로 에어플로우를 설치해보자
+
+pip install apache-airflow
+->동작해서 버전이안맞으면 빨간줄로 오류가 발생. 대부분 업그레이드 오류이므로 잘 읽어보고 해당 라이브러리를 업그레이드하면됨
+
+pip install -U requests
+->설치도중 requests 업데이트 오류가나면, 이거 실행하고 에어플로우를 pip로 재설치
+
+##(export AIRFLOW_HOME=~/airflow ->보류)##
+
+3. 기본DB를 MYSQL로바꾸자
+
+sudo apt install libmysqlclient-dev -y
+
+pip install apache-airflow-providers-mysql
+
+mysql -u 계정명 -p -> 위의 인스톨이끝난 후 mysql접속
+
+
+2. ★계정생성과 권한설정!
+
+create database airflow character set utf8mb4 collate utf8mb4_unicode_ci;
+->utf8로되어있는 데이터베이스를 하나 생성 / 로컬에서만 사용가능
+
+create user '계정명'@'%' identified by '비밀번호'; ->어디서든 사용가능한 계정
+
+
+grant all privileges on airflow.* to 'airflow'@'localhost';
+grant all privileges on airflow.* to 'airflow'@'%';
+
+
+flush privileges;
+
+airflow db init
+
+ls
+
+cd airflow
+
+mkdir dags
+
+vim airflow.cfg
+
+#18번째
+
+default_timezone = utc
+->default_timezone = Asia/Seoul
+
+#24번째
+executor = LocalExecutor
+
+#52번째
+
+load_examples = True
+->에어플로우가 만들어놓은 예제 노출여부 안볼거니 load_examples = False
+
+
+#206번째
+
+sql_alchemy_conn = sqlite:////home/리눅스계정명/airflow/airflow.db
+->sql_alchemy_conn = mysql://airflow:비밀번호@localhost:3306/airflow 
+mysql의 접속 정보이다. airflow는 sql 데이터베이스명, localhost:3306은 접속경로
+접속하려는 db정보가 다른경우 airflow부분 대체가능
+
+
+#428번째
+
+endpoint_url = http://localhost:8080
+-> http기본경로가 8080이기때문에 바꿔준다. 끝을 8988로
+
+#525번째
+base_url = http://localhost:8080
+->base_url = http://localhost:8988
+
+#531번째
+default_ui_timezone = UTC
+->default_ui_timezone=Asia/Seoul
+
+#537번째
+web_server_port = 8080
+->web_server_port = 8988
+
+#963번째
+
+dag_dir_list_interval = 300
+->dag라는 파일의 새로고침 시간 기본값 5분씩. 연습할때는 자주 새로고침해놓고, 프로젝트땐 길게잡아놔도된다.
+
+-> dag_dir_list_interval = 60 으로 변경해주자
+
+airflow db init
+->위에서 설정한것을 재저장한다. 아까 위에서는 안바꿨기때문에 spllie3(기본값)이고 지금은 mysql로바꿨기때문에 새로 저장해줘야함
+
+
+★airflow 계정추가
+
+airflow users create \
+--role Admin \	->권한
+--username 아이디 \
+--password 비밀번호 \
+--firstname min \
+--lastname ad \
+--email admin@admin.com
+
+★실행확인
+
+새로운 터미널 두개를 켜서, 각각
+
+airflow scheduler
+
+airflow webserver
+
+따로 실행시켜준다.
+
+!중요!
+실행시켜놓은 상태에서 -> 파이어폭스 loccalhost:8988 ->admin 계정정보입력->접속성공
+
+★하나의 터미널로 airflow실행하기
+
+nohup airflow scheduler &   ->53892(실행할때마다 할당되는 프로세스가다름)
+
+nohup airflow webserver &   ->54079
+
+↑한줄씩 따로 실행한후에 에어플로우 웹 브라우저에 접속O
+
+## 에어플로우 프로세스 끄기
+
+ps -ef|grep airflow ->airflow프로세스 확인
+
+아까 nohup으로 실행시키면 뜨는 프로세스를 보고 kill해주면된다
+
+kill 53892
+kill 54079
+
+이후 웹브라우저에 접속해 접속이 끊긴걸 확인할 수 있다.
+
 ```
 
 ## 12. VSCODE설치해보자!
@@ -711,7 +859,7 @@ sudo apt update
 
 sudo apt install code # or code-insiders
 
------------------------ ▲위의 세개만 입력해도 되긴하다 아래는 자유
+------------------------------------ ▲위의 세개만 입력해도 되긴하다 아래는 자유
 sudo apt update
 
 sudo apt upgrade -y
@@ -722,8 +870,171 @@ sudo apt install code
 
 ```
 
+## 13.Elasticsearch7(elk7) 설치
 
-## 13.elk7 / elk8설치
+elk란?
+아래 세개를 함께묶어서 약자로 부르는 말이다.
+
+※셋다 실시간 파이프라인 기능을가진 오픈소스 엔진이다.
+
+- ElasticSearch : 분석,저장기능을 담당하는 엔진
+- Logstash :수집부분을 담당. 서로 다른 소스의 데이터를 동적으로 통합 & 원하는 대상으로 데이터를 정규화한다.
+- Kibana : 시각화,대시보드 라고생각하면된다. 위의 두 엔진을 거쳐 수집된 데이터들의 마켓을 만들어 데이터를 보기쉽게 시각화해주는 엔진이다.
+
+Elasticsearch를 DE부분에서 어떻게사용할까?
+
+LOG를쌓아서 LOG를KEYBANA 분석할것이다.
+
+[Elasticsearch](https://www.elastic.co/kr/downloads/elasticsearch)
+
+위의 링크에가서 각 os에맞는버전을 설치함
+(현재는 리눅스 -> 7.17.7 버전설치)
+
+```bash
+
+1.설치
+
+wget https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-7.17.7-linux-x86_64.tar.gz
+
+
+tar xvzf elasticsearch-7.17.7-linux-x86_64.tar.gz
+(압축해제)
+
+ln -s elasticsearch-7.17.7 elastic
+(심볼릭 링크생성)
+
+2.키바나 설치
+
+https://www.elastic.co/kr/downloads/past-releases#kibana
+
+버전은 위의 일레스틱서치와 같아야한다.
+
+위의 링크에서 원하는버전을 누르고,다운로드누르고 링크를복사해온다.
+
+wget https://artifacts.elastic.co/downloads/kibana/kibana-7.17.7-linux-x86_64.tar.gz
+
+
+tar xvzf kibana-7.17.7-linux-x86_64.tar.gz
+(압축해제)
+
+ln -s kibana-7.17.7-linux-x86_64 kibana
+(심볼릭 링크생성)
+
+3.logstash설치
+
+https://www.elastic.co/kr/downloads/past-releases#logstash
+
+키바나와 같은방법으로 설치진행
+
+wget https://artifacts.elastic.co/downloads/logstash/logstash-7.17.7-linux-x86_64.tar.gz
+
+tar xvzf logstash-7.17.7-linux-x86_64.tar.gz
+(압축해제)
+
+ln -s logstash-7.17.7 logstash
+(심볼릭 링크생성)
+
+4.sudo vim ~/.bashrc 설정
+
+# elk
+
+export ELASTIC_HOME=/home/계정명/elastic
+export LOGSTASH_HOME=/home/계정명/logstash
+export KIBANA_HOME=/home/계정명/kibana
+
+export PATH=$PATH:$ELASTIC_HOME/bin:$LOGSTASH_HOME/bin:$KIBANA_HOME/bin
+
+source ~/.bashrc
+
+5.sudo vim /etc/security/limits.conf
+
+end of file안에 아래내용 입력
+
+
+#~~~~
+
+계정명              -       nofile         655535
+
+#end of file
+
+
+6.sudo vim /etc/sysctl.conf 파일열기
+
+#kernel.sy~
+
+vm.max_map_count=262144
+
+↑파일 제일 하단에 vm~만 입력 
+
+```
+
+## mysql에서 데이터를 가져와보자
+
+```bash
+
+1.logstash랑 mysql연결
+
+logstash-plugin install logstash-integration-jdbc
+
+2. vim ~/logstash/test.conf
+
+
+input {
+    jdbc {
+      jdbc_driver_library => "/usr/share/java/mysql-connector-j-8.0.31.jar"
+      jdbc_driver_class => "com.mysql.cj.jdbc.Driver"
+      jdbc_connection_string => "jdbc:mysql://localhost:3306/mysql"
+      jdbc_user => "root"
+      jdbc_password => "1234"
+      statement => "SELECT * from test"
+      schedule => "* * * * *"
+    }
+}
+
+filter {
+
+}
+
+output {
+  elasticsearch {
+    hosts => ["localhost:9200"]
+    index => "test"
+    document_id => "%{id}"
+  }
+}
+
+↑test.conf 안에 위의 내용 붙여넣기!
+
+
+3.
+
+★터미널 3개켜서 진행
+
+3-1.기존터미널
+
+elasticsearch 
+
+->elasticsearch 실행 
+정상실행되면[2022-11-21T14:36:45,688][INFO ][o.e.c.m.MetadataMappingService] [ubuntu] [.kibana_7.17.7_001/eQaBG~~(생략)] update_mapping [_doc] 이런식으로뜬다.
+
+
+3-2.logstash -f ~/logstash/test.conf
+
+->1분에 한번씩 select * from test가 출력된다.
+
+3-3.kibana
+
+-> 위의 세개 다 입력후에 아래 localhost에 접속해서 확인
+
+★터미널 한개로 켜기(airflow와 동일한방법)
+
+elasticsearch -d (데몬으로실행, 백그라운드로 돌아간다)
+
+nohup kibana &
+
+nohup logstash -f ~/logstash/test.conf &
+
+각 아래 로컬호스트에가서 정상작동되는지  확인
 
 
 
