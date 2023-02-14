@@ -4,7 +4,61 @@
 
 ★하둡에서 명렁어 사용시, hdfs '-'명령어 옵션 이다. 앞에 '-'를 붙이면 대부분 O
 
-EX)하둡에 올라가있는 특정 디렉터리삭제 :  hdfs dfs -rm [옵션] 삭제할폴더경로
+EX)하둡에 올라가있는 특정 개별파일삭제 :  hdfs dfs -rm [옵션] 삭제할폴더경로
+
+보통,하둡은 권한이 설정되어있어서 삭제작업할때 매우귀찮다.
+그리고 디렉터리안에 파일이들어있으면 삭제가되지도않기때문에, 삭제방법에 대해 알아보자
+
+    1.디렉터리를 터미널에서 권한변경없이 통째로삭제
+    hdfs dfs -rm -r -skipTrash /folder_name
+
+    2.파일을 터미널에서 권한변경없이 삭제
+    hdfs dfs -rm -r -skipTrash /file_name 
+    hdfs dfs -rm -r /file_name or 경로
+
+    3.웹브라우저로들어가 삭제하는법
+    hdfs dfs -chmod 773(<원하는권한) /folder_name or file 경로
+
+## SPARK DF <-> PANDAS DF/ DF에 ID를자동생성하고 없애기
+
+```PYTHON
+#형태변환
+result_kbs = kbs_idx.select("*").toPandas()
+result_sbs = sbs_idx.select("*").toPandas()
+result_kukmin = kukmin_idx.select("*").toPandas()
+result_daily = daily_idx.select("*").toPandas()
+
+concatDF=pd.concat([result_kbs,result_sbs,result_kukmin,result_daily])
+news_concatdf = spark.createDataFrame(concatDF)
+
+#ID재부여
+
+news_concat_id=news_concatdf.rdd.zipWithIndex().toDF()
+final_newsDF=news_concat_id.select(col("_2").alias("id"),col("_1.*"))
+->COL("_1.*"),COL("_2")를쓰면 아이디가 맨뒤에가서붙는다.
+```
+
+## 정규식을 사용하여 원하는걸 삭제해보자
+```PYTHON
+아래의 모듈 import필수!
+from pyspark.sql import *
+from pyspark.sql.functions import regexp_replace
+from pyspark.sql.functions import col
+import re
+
+#main컬럼 전처리. 아래와같이 []를사용하여 여러개를 한번에 처리한다.
+main_p=sbs_news.select(col("title"),regexp_replace(col("main"),'[\n▶▲■▷▼●\[\]]'," ").alias("main"),col("date"),col("url"))
+# title 컬럼에대하여 정규식을 사용해 여러문자 제거. []는 특수한문자이므로 이스케이프가 필요하여 앞에 \를 사용. []안에있는 문자들과 일치하면 모두 공백으로변경
+title_p=main_p.select(regexp_replace(col("title"),'[\[,"\]+]',"").alias("title"),col("main"),col("date"),col("url"))
+
+#<>나 (), []안의 문자제거
+title_p=main_p.select(regexp_replace(col("title"),'[,]',"").alias("title"),col("main"),regexp_replace(col("date"),'\([^)]*\)',"").alias("date"),col("url"))
+
+중요 : '\([^)]*\)' ()안에있는 모든 문자를 삭제하겠다는의미이다. () -> <>바꿔지면 <>안에있는 문자 모두삭제.
+
+```
+
+
 
 ```python
 
@@ -401,3 +455,26 @@ find_all
 - set() : **기존순서를 유지하지 않고**중복을 제거한다.중복을 허용하지않고 순서가없는 특성을 이용해 중복제거를한것. 
 
         result = list(set(array))
+
+
+## ELK
+
+### elesticsearch
+
+- 인덱스 : 테이블
+- 도큐먼트(doc) : 레코드 (밸류,밸류,밸류)->이것 한줄을의미
+- 매핑 : 스키마(DB 틀, 각 값들에대해 알맞는 스키마를 입혀줌(타입매핑이라고 생각하면될듯))
+- 컬럼 : 필드
+  
+고로, 도큐먼트는 하나의 인덱스에 꼭 포함되어야하고, 인덱스는 매핑작업이 반드시필요하다. 매핑작업은, 필수는아니지만 매우 권장함.
+
+
+### logstash
+
+    로그스테시 사용시 기억할점
+
+    >파이프라인을 반드시 설정해야한다. 따로 파이프라인파일을 생성해주지않고 쓰려면, 콘솔창에서 -e옵션을쓸수있다.
+    >파이프라인은 기본적으로 입력 > 필터 > 출력 으로 이루어져있고 입력/출력은 필수. 필터는 옵션이다.
+    >ex: C:\logstash-7.10.1>.\bin\logstash.bat -e "input { stdin { } } output { stdout { } }"
+    >위와같이 cmd창에 입력하고 input이니, 아무거나 입력하면 "message"에 내가입력한 내용이 나오게된다.
+

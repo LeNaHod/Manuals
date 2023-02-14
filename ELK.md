@@ -1,0 +1,1242 @@
+# 사용버전
+
+GCP / Window = ELK 7.10.1
+
+VM(Ubunto 20.22) = ELK 7.17.7
+
+
+# curl설치
+
+엘라스틱서치 클러스터가 잘 실행되고있는지 확인하고싶어서 curl로 확인해보려고하니,
+Windowpowershell에서 -x get 명령어가 실행이되지않는다.
+CMD 에선 잘되는데.. 찾아보니까 여러이유가있는것같아서 그냥 새로운버전으로 설치하기로함
+
+>[curl공홈](https://curl.se/)
+
+위의 링크에서 각자 필요한 버전을 받자.
+
+다운로드받고 압축을해제하면 curl-버전명-os명-mingw 이런식으로 폴더가생긴다.
+이 폴더를 원하는 드라이브에 넣어주고 시스템 환경변수를 등록해주면 끝이다.
+나는 a드라이브에 넣고 curl bin파일의 경로를 환경변수에 등록해줬다.
+> A:\curl-7.87.0_4\bin
+
+이제 파워쉘에서 제대로 작동하는지 확인해보면 된다.
+
+![curl에러](./curl%EB%AC%B8%EC%A0%9C.PNG)
+
+**안됨.**
+
+그래서 기존 curl이 별칭으로 등록되어있다는 내용을찾아 삭제해주었음
+
+>remove-item alias:\curl
+
+
+여튼 별칭을 지워주고 파워쉘에서 curl을 실행해보니 아주잘됨.
+혹시 모르니 CMD창에서도 실행해보니 문제없이 아주실행잘됨
+다만, 파워쉘을 닫고 다시실행시키면 초기화되어있다는 문제가있다. 
+터미널을 재시작할때마다 매번실행시켜줘야한다는 번거로움..
+
+![curl해결](./curl%EB%AC%B8%EC%A0%9C%ED%95%B4%EA%B2%B0.PNG)
+
+## .yml(기본 설정파일)에서 클러스터이름을 변경해주자
+
+엘라스틱 서치는 기본적으로 클라이언트와 통신하는포트는 9200번이다.
+그리고 tcp로 9300번포트는 노드끼리 통신하는 포트이다.
+
+그리고 하나의 클러스터로 실행된다.
+그래서 클러스터의 이름은 자동할당으로 쓰지말고 구분하기좋은이름으로 사용하면좋다고한다.
+
+클러스터의 이름을 바꿔보자.
+
+confing폴더안의 elasticsearch.yml 파일을 열면, 엘라스틱서치의 기본적인설정이나온다.
+
+간단하게 살펴보면 아래와같다. 
+
+앞에 다 #으로 주석처리가되어있으니, 풀고사용하면된다.
+
+        Cluster
+    cluster.name : my-appliction ->초기 node의 이름이다.자동적으로 엘라스틱서치라는이름이됨. 나는 nag-els 라고바꿔줌.
+        Node
+    node.name :node-1 ->node의 이름이다. 기본적으로 node-1이라고되어있는데, 클러스터이름과 달리, ""로 묶어줘야한다. 나는 "na-els-node-1"으로 바꿔줌.
+        Path
+    path.data : /path/to/data -> data파일이 저장되는경로. data폴더가 생성되고 그아래 저장한다는 의미
+    path.logs : /path/to/logs ->log파일이 저장되는경로이다.
+
+        Network
+    nework.host : 로컬호스트 ->엘라스틱 서치가 실행되는 호스트주소. 기본적으로 로컬호스트로되어있고, 외부에서 접근을 허가하려면 허가할 ip나,"_site_"라고 적어주거나, 0.0.0.0으로 작성해주면된다. 이것은 아래에서 좀 더 자세히다룸
+        set a custm port for HTTP:
+    http.port : 9200 ->엘라스틱서치가 클라이언트랑 통신할 포트
+        Discovery
+    cluster.initial_master_nodes: ["node-1", "node-2"] ->마스터노드가 될 후보들의 리스트이다. 위에서 노드의 이름을바꿔줬으니, node-1은
+    nag-els-node-1으로 바꿔줘야한다. 기본적으로 주석처리되어있어서 이름부분만 바꾸고 주석처리를 해제해도 문제가되진않는다.
+    
+![클러스터,노드네임바꾸기](./yml%ED%8C%8C%EC%9D%BC%EB%85%B8%EB%93%9C_%ED%81%B4%EB%9F%AC%EC%8A%A4%ED%84%B0%EB%B0%94%EA%BE%B8%EA%B8%B0.PNG)
+
+**이름이 지정한이름으로 바뀌어져있는걸 알수있다.**
+
+**※yml 문법은 :에서 한칸 띄우고 입력해야 정상적으로작동한다.**
+
+    path.data -> 데이터를 저장할위치인데 배열형태로 여러 저장경로를 등록할수있기때문에, 한 서버에 여러저장경로를 등록할수있다.
+
+    path.logs -> 클러스터명.log파일을 저장하는 위치이다. 실행중인 시스템로그는 날짜가 변경되면, 이전 로그파일뒤에 날짜가 붙은파일로 변경된다.
+
+    위의 두 경로는
+    path:
+        data: 경로
+        logs: 경로
+
+    처럼 작성 할수있다.
+
+    **bootstrap.memory_lock:T/F** -> 엘라스틱서치가 사용중인 힙메모리영역을 다른 자바프로그램이 못쓰게 점유하는 설정이다.
+
+    network.host: ip주소 -> 엘라스틱서치가 실행되는 서버의 ip주소. 기본적으로 로컬호스트이며, 로컬호스트를 벗어날시 운영모드로들어가서 bootstrap체크를한다.
+
+    network.bind_host:내부망
+
+    network.publish_host:외부망
+
+    위 두가지에 설정되는 변수값은
+    - _local_ : 로컬호스트ip 127.0.0.1
+    - _site_ : 로컬네트워크 주소로 설정됨. 실제로 클러스터링 구성할때 주로 설정하는값. (**GCP에 엘라스틱을 설치한 경우, _site_ 라고 입력하면, 해당인스턴스의 내부ip가 할당된다.**)
+    - _global_ : 외부에서 바라보는 주소로 설정. (**GCP의 경우, 해당인스턴승의 외부ip할당**)
+
+
+
+## 한개의 서버에서 여러 노드를 실행해보자.
+
+엘라스틱서치를 여러개 다운로드받아서, 각 .yml파일에서 
+
+클러스터 이름은 같게 clu-1, node네임만 다르게 node-1, node-2로두었다.
+
+그리고 node-1을 실행시키고 node-2를실행시키면, node-1에 **added {{node-2}}** 라고 node-2가 추가되는것을 볼수있다.
+
+그러면 port는  node-1은 9200, node-2는 9201 로 할당되지만, 같은 클러스터로 묶여있어서(clu-1)
+어느포트로 접속하던, 어느 데이터를 조작할수있다.
+
+하지만 만약 같은서버에서 다른 클러스터를 실행시키게되면, 9202번이 할당되게되고, 9202번은 데이터를 조작할수없다.
+
+이런식으로 하나의 서버에서 여러 노드를 실행시킬수도있고, 여러 서버에서 각각의 노드를 실행시킬수도있다.
+
+## 엘라스틱서치 윈도우에서 데몬으로 실행하기
+
+엘라스틱서치를 매번 경로를 지정해서 실행하기 귀찮다.
+
+리눅스나 윈도우나 엘라스틱서치가 실제로 실행되는파일이있는 경로를 모두써줘야하니, 
+아무리 파일이름을 짧게바꾼다고해도 좀 귀찮았다.
+(나는 엘라스틱서치를 els-7.10.1, 키바나를 kib-7.10.1, 로그스태시를 logs-7.10.1로 바꿔놨다.)
+
+또,터미널을닫아버리면 엘라스틱서치가 꺼져버리니, 그것도불편하다.
+
+리눅스는
+>엘라스틱서치 bin파일경로/실행파일(elasticsearch)
+
+윈도우는
+>엘라스틱서치 bin파일경로/실행파일.bat 이다.
+
+★7버전이상부터는 다운로드패키지에 jdk가 포함되어있어서, 따로 자바를설치할필요가없다고한다.
+
+여튼 공식문서에가보면 실행옵션이 두가지가있다.
+-d 옵션은 데몬으로 실행하는방법이다.
+
+>els-7.10.1\bin\elasticsearch.bat -d
+
+명령프롬포트에서 아까와같이 curl명령어를 찍어보면 정상적으로 출력되는게 맞다.
+그런데 윈도우는 데몬으로 돌리면 -log파일만 출력이되지않을뿐 다른조작이 안된다(나만그런걸수도있고)
+그래서 결국 다른터미널을 켜야해서 결론적으로는 같다.
+
+### 종료방법
+보통은 -c를 눌러종료시키지만, 지금은 -d옵션으로 데몬으로 실행시키는중이니 프로세스를
+찾아 종료시켜줘야한다.
+
+리눅스는 kill로 데몬을 삭제할수있고,
+윈도우는 taskkill이다. 옵션은 거의 동일. 
+
+- taskkill /im 이미지이름 or /pid pid번호
+- -f는 강제종료옵션. 그냥 뒤에 /f 를붙이면되고 리눅스는 -f.
+
+작업관리자를 켜서 이름을 복사해서붙여넣거나 pid를 확인하면된다.
+리눅스는 ps명령어를 사용해서 ps -e 나 -f(pid포함 프로세스 상세정보확인)
+로 프로세스를 확인하자.
+
+## 윈도우에서 자동실행을 시켜보자
+
+서비스에 등록해서 자동실행시키는 방법도있겠지만, .sh파일을 만들어서 git bash로 만들어서 필요할때마다 실행시키는게 효율적이라고 생각했다.
+-p옵션이나 -d옵션 등 많지만, 기본적으로 실행만시키는 쉘스크립트파일을 만들어서 엘라스틱서치를 실행시켜보기로했다.
+
+elsgo.sh (엘라스틱서치 실행파일) 내용
+
+```bash
+#!/bim/sh
+echo "els start!"
+C:/els-7.10.1/bin/elasticsearch.bat
+
+#*기본경로를 복사하면 윈도우는 \ 로 들어오는데, .sh로 실행시키기위해서는 / 로바꿔줘야한다.*
+#echo는 실행이 잘되고있는지 알아보기위해서 적어놓음
+#!/bin/sh 는 chmod 로 권한을 바꿔주지않고도 실행파일로 인식시키기위해 적어놨다. .sh파일의 시작되는 첫문장이 !/bin/sh면 실행파일로인식한다고한다.
+```
+
+Git bash를 실행시키고 ll(소문자L)명령어로 해당파일의 권한을 확인해보자
+※해당파일이있는 경로로 이동한 후에 명령어를 실행시키길 권장.
+
+>ll elsgo.sh
+
+![els.sh권한](./els%EC%8B%A4%ED%96%89%ED%8C%8C%EC%9D%BC%EA%B6%8C%ED%95%9C.PNG)
+
+나는 경로를 이동하지않고 그냥 조회했다. 별도의 chmoe작업없이도 실행파일로인식한다.
+
+
+**실행시켜보자**
+
+>sh elsgo.sh
+
+![elssh](./elssh%EC%8B%A4%ED%96%89%EC%84%B1%EA%B3%B5.PNG)
+
+잘실행되고있는것을 알수있다.
+
+위와같은 방식으로 키바나 sh파일도 생성해주었다.
+로그스태시는 기본적으로 파이프라인을 지정해주거나 -e(명령어에서 바로 파이프라인설정), -f(conf파일) 옵션을 사용하여 읽어와서 아직
+가져올게 정해지지않았으니 패스.
+
+## 리눅스용 실행파일을 만들어보자 start.sh / stop.sh
+
+실행용 .sh파일과 종료용 .sh파일을 만들어보자.
+(실행파일이름 약자.pid 를 하면 실행되는것의 pid를 기록해주는것을 응용)
+
+메모장이나 아무 편집기를열어 
+
+**이름.sh**파일을 만들어주자.
+나는 터미널을 켜면 처음위치해있는 경로에서 움직이기 싫어서 elasticsearch실행파일의
+절대경로를 **start.sh**파일안에 넣어줬다. 그리고 -d 옵션은 사용하지않고 pid만 기록해주는 -p옵션만 사용했다.
+
+> bin/elasticsearch -d -p els.pid
+
+위와같이 입력하고 저장.
+
+**정지용으로 stop.sh**도 만들자
+>kill 'cat els.pid'
+
+정상적으로 만들어졌으면 두 실행파일에 실행권한을 추가해주고 실행하면된다.
+
+>chmod -755 *.sh or start.sh
+>chmod -755 stop.sh 
+
+같은경로에 .sh파일이많다면 개별로지정해서 권한을주자. 
+
+# elk 기본조작
+
+>server에서 elk의 기본적인 설치화 실행방법, 설정을 다뤄봤으니 이제 elk를 조작하여 원하는 결과를얻어보자.
+>나는 news와 실시간 트위터데이터(카프카이용)를 받아와, nori토크나이저로 형태소를 분석하고 키워드를 도출하여
+>키바나로 어떤 데이터들이들어있는지 보여주고, 워드클라우드로 표현하는것이 최종 목표이다.
+
+
+## 엘라스틱 서치를 외부에서도 접속할수있게 해보자.
+
+엘라스틱 서치는 .yml파일에 network.host의 값을 설정하는 순간, 개발자모드 -> 운영모드가된다. 그러면 여러 부트스트랩체크를 하게되는데
+
+**network.host에만 값을 설정했을때 어떤 오류가 생기는지 알아본다.**
+
+>[1]: max virtual memory areas vm.max_map_count [65530] is too low, increase to at least [262144]
+
+    해당오류는 운영체제에서 하나의 프로세스가 너무많은 파일을 점유하는것을 막아놨기때문에 발생하는 오류이다. 그래서 한개의 프로세스가 점유할수있는 파일의 갯수를 제한해둔것을 늘리면된다.
+    
+    방법1. -> 1회성.
+    sudo su
+    ulimit -n 65535
+    su 사용자이름
+
+    방법2. -> 영구적
+    /etc/security/limits.conf , /etc/sysctl.conf 수정하기.
+
+    sudo vi /etc/security/limits.conf
+
+    사용자이름 - nofile 65535 ->입력 후, 재시작 해야적용이된다.
+
+    sudo vi /etc/sysctl.conf
+
+    vm.max_map_count=262144 ->입력 후, 재시작 (sudo shutdown -r 로 시스템 재시작)
+
+    해결.
+
+>[2]: the default discovery settings are unsuitable for production use; at least one of [discovery.seed_hosts, discovery.seed_providers, cluster.initial_master_nodes] must be configured
+
+    config/elasticsearch.yml 파일안의 discoverey.seed_hosts에서 접속할 호스트를 아래 host1,host2에 넣어주면된다. GCP의 방화벽에서 GCP에 접근할 IP를 등록해주는 작업과같다.
+
+    vi config/elasticsearch.yml
+
+    discovery.seed_hosts: ["host1", "host2"] ->"host1","host2"자리에 접속을허용할 ip OR hostname입력
+
+    터미널에 hostname 입력하고 seed_hosts에 추가.(GCP의 경우 현재 인스턴스의 이름이 나온다.)
+
+    cluster.initial_master_nodes: ["node-1","node-2"] ->discovery.seed_hosts와 꼭 같이사용해야하는 옵션이다. "node-1","node-2"자리에 노드이름을 넣어주면된다.
+
+    해결.
+
+이제 정상적으로 엘라스틱 서치가 운영모드로 실행된다. 
+
+![엘라스틱서치 운영모드](./elk/%EC%9A%B4%EC%98%81%EB%AA%A8%EB%93%9C_%EB%A1%9C%EC%BB%AC%ED%98%B8%EC%8A%A4%ED%8A%B8.PNG)
+
+**하지만, 이제는 로컬호스트로 접속할수없다.** 로컬호스트로 실행하고싶다면 network관련 설정들을 주석처리 해주면 된다.
+
+나는 다른 사용자들이 데이터마켓을 보도록 구축할것이기때문에, 그대로 둠.
+
+운영모드에서 엘라스틱서치 접속
+
+
+![운영모드_접속하기](./elk/운영모드_접속하기.PNG)
+
+>curl 내부ip:포트번호 
+
+위와같이 접속하면 정상접속이되는것을 볼수있다.
+내부 ip는 ifconfig로 확인하거나, GCP는 콘솔의 내부ip를 복사해도된다.
+
+같은 호스트안에서 접속하지말고 다른 인스턴스나, vm에서 접속도 가능하다.
+
+**단, GCP는 반드시 방화벽에서 해당인스턴스에 접근할 IP를 등록해주는 작업을거쳐야한다.**
+
+나는 이미 설정을해놨으니 생략하고 Window 로컬 pc에서 접속해보았다.
+
+>curl 외부IP:포트번호 (GCP는 콘솔의 외부IP)
+
+![운영모드_외부접속](./elk/운영모드_윈도우.PNG)
+
+
+### 추가로 로컬호스트에서도 접속하고싶다면 위의 내용에 아래와같이 로컬호스트만 추가해주면된다.
+
+![운영모드_로컬호스트모드](./elk/%EC%9A%B4%EC%98%81%EB%AA%A8%EB%93%9C_%EB%A1%9C%EC%BB%AC%ED%98%B8%EC%8A%A4%ED%8A%B8%EB%AA%A8%EB%93%9C.PNG)
+
+config/elasticsearch.yml파일에
+배열형태로 추가해주면된다.
+
+
+## 분산통신을 해보자.
+
+GCP를 더 생성하여 클러스터를 나누고 각각의 다른 서버에서 클러스터끼리 통신할수있도록 환경을 구축해본다.
+
+![GCP_클러스터아키텍쳐](./elk/ELK_GCP_%EB%B6%84%EC%82%B0%EC%95%84%ED%82%A4%ED%85%8D%EC%B2%98.PNG)
+
+출처:[Elasticsearch사용자 그룹 유튜브강의](https://www.youtube.com/watch?v=LM5IqDTWN60&list=PLhFRZgJc2afp0gaUnQf68kJHPXLG16YCf&index=8)
+
+다만 나는 ip를 0.0.0.0/0 으로 하지않고 다른 것을 사용했다.
+
+elasticsearch.yml 파일의 .SEED_HOST옵션에 내부IP 주소를넣어도되지만, 
+
+HOST파일에서 IP주소와 이름을 매칭하여 사용해볼것이다.
+
+**HOST파일을 수정해보자**
+
+    GCP 1번호스트(1번인스턴스)
+    
+    sudo vi /etc/hosts
+
+    (파일안에 작성)
+
+    인스턴스1의 내부IP(GCP내부IP)  해당 내부IP를 부를 이름1
+    인스턴스2의 내부IP            해당 내부IP를 부를 이름2
+    
+다음, **GCP방화벽 설정을한다**
+
+    이름:elasitc-internal
+    포트:9200,9300 ->9300번 포트를 열어주지않으면 서로 바인딩이되지않음!
+    ★소스필터:elastic-internal ->ip주소를 직접 지정하는게아닌, 같은 태그를가진 인스턴스의 접근을 허용하게된다.
+    ※GCP를사용하지 않는 유저의 접근을 허용할때는 ip주소가 편할수있지만,GCP인스턴스끼리 통신할때는 소스필터-소스태그가 편할수있다.
+    태그:elastic-internal
+
+    이후, 다른 인스턴스에서 /etc/hosts를 편접하지않았으니 일단 2번인스턴스의 .yml파일안에 discovery.seed_hosts를 1번에서 2번 자신의 이름을 바꿔준다.
+    
+
+접속테스트 : 1번인스턴스 -> 2번인스턴스로 접속
+
+>curl 내부ip주소 or 1번인스턴스에서 지정한 내부ip이름:포트
+
+아래와같이나오면 성공.
+
+    {
+    "name" : "2번인스턴스에서 지정한 노드이름",
+    "cluster_name" : "2번인스턴스에서 지정한 클러스터이름(현재환경에서는 1번과같은 클러스터)",
+    ...
+    },
+    "tagline" : "You Know, for Search"
+    }
+
+**인스턴스1에도 /etc/hosts/ 파일안에 ip를 이름으로 등록해준다.** 
+
+다음에 모든인스턴스에 동일하게 discovery.SEED_HOST 와 cluster.initial_master_nodes에 호스트 이름들을 추가해준다
+
+    discovery.SEED_HOST: ["인스턴스1번 호스트이름","인스턴스2번 호스트이름"]
+    cluster.initial_master_nodes: ["인스턴스1번 노드이름", "인스턴스2번 노드이름"]
+
+바인딩 확인
+
+각각의 엘라스틱 서치를 모두 실행한 후, Winodw로컬에서 curl명령어를 이용하여 인스턴스1번의 외부ip로 인스턴스에 접속해본다.(인스턴스2번은 방화벽에설정에서 winodw로 접속하지못하게 막아놓음)
+
+>curl 외부ip:포트(9200)
+
+>curl 외부ip:포트/_cat_/nodes
+
+    C:\Users\User_name>curl 인스턴스1_외부ip:포트/_cat/nodes
+    인스턴스1내부ip 6 56 3 0.00 0.07 0.05 cdhilmrstw * 인스턴스1_노드이름
+
+    ->바인딩 실패. 인스턴스2의 노드이름도 같이나와야한다.
+
+
+엘라스틱서치는 실행하게되면 자동으로 data폴더와 log폴더가 elasticsearch 폴더 하위에 생기게된다.
+
+**★따로따로 실행한 이력(data폴더가 생김)이 있어서 바인딩이 제대로이루어지지않았다. elasticsearch폴더안의 data폴더를 삭제하고 다시실행.(log폴더는 삭제하지않았음.)**
+
+>rm -rf data폴더경로
+
+**결과**
+
+    C:\Users\User_name>curl 인스턴스1_외부ip:포트/_cat/nodes
+    인스턴스1내부ip 9 56 11 0.30 0.19 0.08 cdhilmrstw * 인스턴스1_노드이름   -> * 표시가 되어있는게 현재 Master노드
+    인스턴스1내부ip 19 24 33 0.57 0.22 0.09 cdhilmrstw - 인스턴스2_노드이름
+
+    >성공
+
+    위의 항목들의 타이틀을 같이 출력하고싶다면
+
+    >curl "http://외부ip:포트/_cat/nodes?v"
+
+    ip         heap.percent ram.percent cpu load_1m load_5m load_15m node.role  master name
+    인스턴스1내부ip 9 56 11 0.30 0.19 0.08 cdhilmrstw * 인스턴스1_노드이름
+
+    위와같이 출력된다.
+
+## 엘라스틱서치 노드간의 TLS 통신 적용과 ID/PASSWORD를 생성해보자
+
+config/elasticsearch.yml파일에 아래내용 추가
+
+    xpack.security.enabled: true
+    xpack.security.transport.ssl.enabled: true
+
+이후 ssl을 생성하지않았다면 ssl키를 생성해준다.
+
+### ssl키 생성 + 인증서 생성
+
+엘라스틱서치는 elasticsearch-certutil을 이용해서 인증서를 생성할수있다.
+
+위치는 아래와같다.
+
+>./bin/elasticsearch-certutil 
+
+그리고 공식문서대로 명령어 실행
+
+>./bin/elasticsearch-certutil ca
+
+    Please enter the desired output file [elastic-stack-ca.p12]: ->디폴트로만들어지는 키 이름
+    Enter password for elastic-stack-ca.p12 ->패스워드입력하세요
+
+패스워드를 입력하고나면, elasticsearch폴더 아래에 디폴트 이름인 elastic-stack-ca.p12 가 생성된걸볼수있다.
+
+이제 **대칭키**를 생성해보자.
+
+※elasticsearch 폴더 아래에 생성한다.
+
+>mkdir config/certs
+
+이후 아래 명령어 입력
+
+    ./bin/elasticsearch-certutil cert \
+    --ca 공개키이름(위에서 생성한) \
+    --dns 등록할 dns들 \
+    --ip dns에 등록한 dns의 ip들 \ (GCP는 인스턴스 내부IP)
+    --out config/certs/지정하고싶은이름.p12
+
+    Enter password for CA (elastic-stack-ca.p12) : ->아까 생성한 공개키의 패스워드입력
+    Enter password for 방금지정한.p12파일의 패스워드입력.p12 ->
+    ->생성완료
+
+>ls config/certs/ 해당 경로안에 대칭키가 만들어졌으면 성공.
+
+**elasticsearch.yml파일에 추가**
+
+    xpack.security.transport.ssl.keystore.path: certs/대칭키.p12
+    xpack.security.transport.ssl.truststore.path: certs/대칭키.p12
+
+    ★절대경로를 지정하지않으면 config디렉터리 이하부터 상대경로를본다.
+
+    ※Password추가. ▼ 안하면 오류남
+    >ElasticsearchSecurityException[failed to load SSL configuration [xpack.security.transport.ssl]]; nested: ElasticsearchException[failed to initialize SSL TrustManager]; nested: IOException[keystore password was incorrect]; nested: UnrecoverableKeyException[failed to decrypt safe contents entry: javax.crypto.BadPaddingException: Given final block not properly padded. Such issues can arise if a bad key is used during decryption.];
+
+    xpack.security.transport.ssl.keystore.secure_password: "대칭키패스워드"
+    xpack.security.transport.ssl.truststore.secure_password: "대칭키패스워드"
+
+    -> ▼ 위에서 추가한 두줄의 패스워드는 "keystore"에 넣어라. yml파일은 설정파일이니까 안된다.
+    Setting [xpack.security.transport.ssl.keystore.secure_password] is a secure setting and must be stored inside the Elasticsearch keystore, but was found inside elasticsearch.yml
+
+**keystore에 패스워드넣기**
+
+엘라스틱서치는 key를 안전하게보관할수있는 keystore를 제공한다.
+
+아래 명령어 입력해서 keystore를 최초생성한다.(elasticsearch폴더 위치에서 실행)
+
+>./bin/elasticsearch-keystore create
+
+An elasticsearch keystore already exists. Overwrite?[y/n] ->이미 만들어진게있다고하면 n
+
+
+>./bin/elasticsearch-keystore add xpack.security.transport.ssl.keystore.secure_password
+
+->대칭키 패스워드 새로입력.
+
+>./bin/elasticsearch-keystore add xpack.security.transport.ssl.truststore.secure_password
+
+-> 대칭키 패스워드 새로입력
+
+Keystore에 Key가 등록된것을 확인
+
+>bin/elasticsearch-keystore list
+
+    keystore.seed
+    xpack.security.transport.ssl.keystore.secure_password
+    xpack.security.transport.ssl.truststore.secure_password
+    ->정상등록
+
+
+## SCP명령어를 이용하여 인증서를 가져와서 다른인스턴스에 적용
+
+인스턴스간에서 scp를 이용하여 인증서가 복사가되지않으니, 로컬pc를거쳐서 인스턴스에 넣어준다.
+
+(로컬)
+
+>scp -i ~/.ssh/ssh키 계정명@외부ip:/home/계정명/대칭키경로/대칭키명.p12 ./
+
+대칭키명.p12           100% 3628   118.3KB/s   00:00 ->성공
+
+>ls 로 현재위치에 제대로 가져와졌는지 확인
+
+
+### 다른인스턴스에 전송
+
+※다른 인스턴스에 certs디렉터리를 만들지않았다면, elasticsearch/config/하위에 cerets생성.
+
+>mkdir certs
+
+(로컬에서 입력, 계정명과 외부ip는 복사할인스턴스의 정보)
+
+>scp -i ~/.ssh/ssh키 계정명@외부ip:/home/계정명/대칭키경로/대칭키명.p12
+
+제대로 복사가되었으면, 인스턴스1번처럼 보안설정을한다.
+
+### id/password생성
+
+보안설정을 마쳤으니 이제 엘라스틱서치에 접속할때 id와 password를 설정해줘야한다.
+
+※비밀번호를 잊어버리면 두가지방법이있음.
+
+- bin/elasticsearch-users useradd {user} -p {password} -r{role} ->해당노드에서만 가능
+- data폴더를 모두 삭제하고 비밀번호 새로설정
+
+>.bin/elasticsearch-setup-passwords
+
+elasticsearch-setup-passwords를 이용하여 password를 설정하자.
+
+두가지 옵션이있다.
+
+- auto: 비밀번호 자동성생
+- interactive: 모든 시스템아이디에 사용자가 비밀번호를 직접지정
+
+두가지 옵션 중, interactive를 사용하여, 비밀번호를 지정함.
+
+(**단,아래 명령어를 실행하기 전, 비밀번호를 지정하려는 엘라스틱서치가 실행중이여야한다!**)
+
+>bin/elasticsearch-setup-passwords interactive
+
+    elastic,apm_system,kibana,kibana_system,logstash_system ... 등 이것외에 더많은
+    시스템 id의 비밀번호를 설정하게된다. 패스워드를 설정할때 두번씩 물어본다.
+
+>curl ip or dns:포트 -u 시스템id:설정한패스워드
+
+위와 같이 입력하여 엘라스틱서치 서버에 잘 접속이되면 성공.
+
+★같은 클러스터로 묶여있는 모든 노드들에 같은 패스워드가 지정이된다. 클러스터에 패스워드가 저장이되기때문이다. (위의 users useradd는 노드에만 적용하는것이라서 같은 클러스터에있는 다른 노드들에 적용X)
+
+### users useradd도 이용해보자
+
+>bin/elasticsearch-users useradd 아이디 -p 비밀번호 -r 롤(권한)
+
+위의 명령어를 실행하면,명령어를 실행한 해당 노드는
+
+노드 패스워드 / 클러스터 패스워드 둘 중 원하는것으로 엘라스틱서버에 접속할수있다.
+
+>curl ip or dns:포트 -u 노드유저id:노드유저패스워드
+
+node유저 계정 정보를 확인하기
+
+>elasticserach/config/users ->id,password(패스워드는 암호화되어있음) 확인가능
+
+>elasticsearch/config/users_roles -> 유저의 권한 확인가능
+
+
+## GCP로 Kibna에 접속하기
+
+### 아키텍쳐 리뷰
+
+- GCP인스턴스1 <-> GCP인스턴스2 (9300포트를 이용하여 노드들끼리 바인딩시킴)
+- GCP인스턴스1 <-> client (elasticsearch만 통신하도록 설정)
+- GCP인스턴스2 <-> client(Kibana만 통신하도록 설정)
+
+## Kibana 실행전 설정
+
+kib/config/kibana.yml 파일에 몇가지 추가해준다.
+
+    server.host: "ip주소 or 매핑된 이름" -> 키바나를 실행할ip. 기본적으로 localhost이다.
+    server.name: "my-kibana" ->엘라스틱서치의 노드네임과 같은 개념. 키바나 이름
+    elasticsearch.hosts: ["http://ip(or name):포트"] ->키바나가 접속할 엘라스틱서치의 호스트. 다른 인스턴스에있는 엘라스틱서치에 접속할것이면 해당 인스턴스의 주소를 적어주고 엘라스틱서치 포트는 열려있어야한다.
+    elasticserach.username: "위에서 생성한 엘라스틱서치 시스템id"
+    elasticsearch.password: "위에서 생성한 엘라스틱서치 password"
+
+
+
+그 외의 다른 옵션들
+
+    kibana.index -> 한개의 클러스터에 여러 키바나를 운영하고싶을때 사용. index이름을 서로 다르게 입력하면 충돌날 확률이 적다.
+
+
+**elasticsearch때와 마찬가지로, yml파일에 password를 직접입력하지않고 keystore에 등록한다.**
+
+kibana 디렉터리에 위치해있다고 가정
+
+>bin/kibana-keystore create
+
+Kibana keystore를 생성하고 elasticsearch에서 설정한 시스템 password를 등록
+
+>bin/kibana-keystore add elasticsearch.password
+
+＊확인
+
+>bin/kibana-keystore list
+
+elasticsearch.password 
+
+위와같이 명령어에서 add한것이 뜨면 제대로 등록된것
+
+### GCP에서 kibana를 실행시키고 로컬PC브라우저에서 접속해본다.
+
+이제 kibana/bin/kibana를 실행시켜서 로컬pc에서 접속해보자.(GCP는 방화벽설정은 필수)
+
+>bin/kibana
+
+    log   [14:53:19.518] [info][listening] Server running at http://지정한 DNS OR ID:지정한 Kibana포트
+
+    위의 내용처럼 서버가 실행중이라는 내용이뜨면 성공.
+
+    (방화벽설정은 전과 동일하게진행)
+
+로컬PC브라우저에서 Kibana에 접속
+
+>kibana를실행중인GCP외부IP:Kibana포트
+
+![GCPKibana접속](./elk/GCP_Kibana.PNG)
+
+사진처럼 나오면 제대로 동작중인것이다. elasticsearch 서버의 id,password를 입력하면 된다.
+
+
+### Kibana에서 유저추가하는법
+
+위의 쉘에서
+
+>bin/elasticsearch-users useradd {user} -p {password} -r{role} 
+
+▲명령어를 이용하여 해당노드에 유저를 추가하여 id/password를 만들었다. 
+
+이것과 같은것을 Kibana에서도 할수있다.
+
+▼ 방법은 아래 사진을 참고 
+
+![GCPKibana유저만들기1](./elk/Kibana_%EC%9C%A0%EC%A0%80%EB%A7%8C%EB%93%A4%EA%B8%B0.PNG)
+
+![GCPKibana유저만들기2](./elk/Kibana_%EC%9C%A0%EC%A0%80%EB%A7%8C%EB%93%A4%EA%B8%B02_1.png)
+
+![GCPKibana유저만들기3](./elk/Kibana_%EC%9C%A0%EC%A0%80%EB%A7%8C%EB%93%A4%EA%B8%B02_2.png)
+
+![GCPKibana유저만들기4](./elk/Kibana_%EC%9C%A0%EC%A0%80%EB%A7%8C%EB%93%A4%EA%B8%B03.PNG)
+
+▲ 필요한 정보를 입력하고, Create User를 클릭하면 생성이 끝난다.
+
+생성된 id/password로 Kibana 웹브라우저에서 로그인할수있다.
+
+
+## Kibana를 pm2로 데몬으로 실행하기
+
+키바나는 -d, -p, -e등 같은 명령어가없다.
+리눅스의 & 명령어를 이용하여 
+
+>bin/kibana & ->이렇게 실행할수있다. 종료는 ctrl+z
+
+또는
+
+>./node/bin/node ./src/cli/cli.js -> 이것도 가능. kibana를 배포하는 js라고함.
+
+**※Kibana는 프로세스를 kibana라고 찾으면 나오지않음 nodejs로 실행중이기 때문임**
+
+>ps -ef | grep kibana -> X
+
+>ps -ef | grep node -> O
+
+**pm2 프로그램을 사용하기위해 반드시 kibana node에 맞는 버전을 다운로드받아야한다.**
+
+kibana node 버전확인
+
+>vi kibana/package.json
+
+"engines" 부분이 node버전이다.
+
+다양한 node버전을 다운로드받을수있는 **nvm**을 먼저 설치하자.
+
+[nvm_github](https://github.com/nvm-sh/nvm)
+
+```bash
+curl OR wget으로 실행한다.
+
+>curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash
+
+>wget -qO- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash
+
+★ .bash_profile, ~/.zshrc, ~/.profile또는 ~/.bashrc에 아래 내용이 "자동으로 추가되지않은경우", "수동"으로 추가해준다.
+
+export NVM_DIR="$([ -z "${XDG_CONFIG_HOME-}" ] && printf %s "${HOME}/.nvm" || printf %s "${XDG_CONFIG_HOME}/nvm")"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" # This loads nvm
+
+자동이던 수동이던 .bashrc에 추가가 되었기때문에, 재접속하거나 아래 명령어로 bashrc를 업데이트해준다.
+
+>source ~/.bashrc
+```
+실행확인
+
+>nvm
+
+    Node Version Manager (v0.39.3)
+
+    Note: <version> refers to any version-like string nvm understands. This includes:
+    - full or partial version numbers, starting with an optional "v" (0.10, v0.1.2, v1)
+    - default (built-in) aliases: node, stable, unstable, iojs, system
+    - custom aliases you define with `nvm alias foo`
+
+위와같이 다른내용들과 함께 나오면 제대로 동작중이다. 이제 버전에 맞는 ndoe를 설치해보자
+
+>nvm install 10.22.1(kibana node버전)
+
+**설치가 완료되면 "node"명령어 사용가능**
+
+    사용자명@인스턴스명:~$ node
+    > 
+    >
+    사용자명@인스턴스명:~$ node -v
+    v10.22.1
+    
+    성공
+
+### pm2설치
+
+이제 pm2를 설치해보자.
+
+[pm2 공식홈페이지](https://pm2.io/)
+
+
+```bash
+아래 명령어를 이용하여 설치
+
+>npm install pm2 -g
+
+설치가 완료되면 pm2 명령어를 사용할수있다.
+
+>pm2 start app.js
+
+pm2로 시작한 app.js 은 데몬으로 실행되고, pm2가 해당 js를 관리해준다.
+
+js파일을 실행시켜야하니까 kibana js를 실행
+
+>pm2 start kibana/src/cli/cli.js
+
+제대로 실행이되면 이렇게나온다.
+┌─────┬────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id  │ name   │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user
+ │ watching │
+├─────┼────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 0   │ cli    │ default     │ 7.10.1  │ fork    │ 41995    │ 0s     │ 0    │ online    │ 0%       │ 27.6mb   │ d.. │ disabled │
+└─────┴────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴─────────
+
+로컬 pc 브라우저에서 kibana에 잘 접속이 된다.
+
+종료
+
+>pm2 stop cli
+
+프로세스 삭제
+
+>pm2 delete 프로세스명
+
+
+실행 프로세스 이름 바꾸기(실행할때 이름을 지정해주는 방법)
+
+>pm2 start kibana/src/cli/cli.js --name kibana
+
+위와 같이 실행하면 name이 kibana로 바뀐다.
+
+```
+
+## Index와 샤드를 알아보고 Kibana로 샤드를 모니터링해보자
+
+### Index와 샤드의 개념
+
+- Document: Elasticsearch에서의 "단일 데이터 단위"를 의미한다.
+- Index: Document를 모아놓은 하나의 집합을 Index라고한다 또한 인디시즈(Indices)라고도불린다.
+- Shard: Node에 분산되어 저장되는 Index의단위. Index의 단위라고생각하면된다. 노드에 분산되어저장
+- Replica: Shard의 복사본. 샤드는 프라이머리 샤드와 복제본으로 나뉜다. 처음생성된 샤드를 프라이머리. 이후에는 복제본으로 관리된다. **반드시 서로 다른노드에 저장된다.**
+
+인덱스를 생성하고 샤드갯수를 설정해보자
+
+    Ex)샤드5개 복제본1인 Books인덱스 생성
+
+    >curl "http://ip:포트/인덱스이름" -H 'Content-Type: application/json' -d'
+    {
+    "settings": {
+        "number_of_shards": 5,
+        "number_of_replicas": 1
+    }
+    }'
+
+    기본적으로 위와같은 형식이고, Kibana의 Dev Tools에 복사하면 아래와 같이 알아서 변환된다.
+
+        PUT /books
+    {
+    "settings": {
+        "number_of_shards": 5,
+        "number_of_replicas": 1
+    }
+    }
+
+    ★프라이 머리 샤드의 갯수는 바꿀수없다. 복사본갯수는 바꿀수있다. 인덱스의 어떤 설정을 바꾸고싶으면
+
+    >PUT 인덱스명/_settings
+    {
+        바꿀옵션:바꿀값
+    }
+
+    GET _cat/nodes?v&h=ip,name,role == curl "http://ip:포트/_cat/nodes?v" 와 같음
+    
+    - v:헤더옵션
+    - h:조회옵션(보고싶은것만 지정)
+    
+    ★GET _cat/indics ->인덱스를 조회할수있다.
+    GET _cat/shards/books -> books라는 인덱스의 shards 정보를 조회할수있다.
+
+### Kibana의 stack monitering을 이용해보자
+
+stack monitoring기능은 위와같이 인덱스의 shards수나 노드정보등을 보여주는 모니터링기능이다.
+**Metricbeat**는 사용안함. or set up with self monitoring 선택
+
+![모니터링](./elk/stack_monitoring.PNG)
+
+Turn on monitoring을 누르면 모니터링을 할수있다.
+
+![키바나인스턴스모니터링](./elk/kibana_instances.PNG)
+
+또한, kibana overview에서 instances를 클릭하면, kibana.yml파일에서 설정했던 키바나의 이름이 나오며, 해당 인스턴스의 이름이나온다. 나는 my-kib로줘서 my-kib로나옴.
+
+위와 마찬가지로 elasticsearch의 overview에 들어가서 nodes를 클릭하면 해당 클러스터안에있는 모든 노드들이 yml파일로 설정한 이름들로 나오며 샤드, jvm heap, disk free space 등등 각종정보가 나온다.
+
+Nodes의 각 Node의 이름을 클릭하면 각 정보를 그래프로 볼수있고, 맨 아래로 내리다보면 Shard의 정보도 확인할수있다.
+
+![키바나샤드정보](./elk/kibana_monitoring_shard.PNG)
+
+위에서 의미하는건 해당노드가 books 인덱스의 0 1 2 3 4 샤드를 가지고있다는것을 의미한다.
+
+Kibana가 elasticsearch의 데이터를 자동으로 수집하여 UI로 나타내기때문에 데이터를 꽤 많이차지한다고한다.
+
+하지만, Kibana는 모니터링을 시작하면 따로 종료를하는 기능을 제공하지않는다. 
+
+그래서 수동으로 Kibana의 모니터링을 중지시켜보자.
+
+```bash
+
+Dev Tools에 들어가서  
+
+GET _cluster/settings 
+
+{
+  "persistent" : {
+    "xpack" : {
+      "monitoring" : {
+        "collection" : {
+          "enabled" : "true"
+        }
+      }
+    }
+  },
+  "transient" : { }
+}
+
+위와 같이나오는데, 내용은 Kibana가 elasticsearch의 데이터를 자동으로 수집하라는 내용이다.
+중지시키려면 enabled를 false로 바꿔주자.
+
+PUT _cluster/settings
+{
+  "persistent" : {
+    "xpack" : {
+      "monitoring" : {
+        "collection" : {
+          "enabled" : false 
+        }
+      }
+    }
+  },
+  "transient" : { }
+}
+
+
+"enabled" : false -> null or false 둘중 하나 선택을 할수있다. 
+
+false: 설정값을 그대로 남겨두고 "중단"만 시킴
+
+null: 설정값을 삭제시켜버린다. "default 설정상태"로 돌아간다.
+
+그러니, 어떤 설정의 default값으로 돌아가고싶을때는 null을쓰는게 적합하다.
+
+```
+
+## CRUDS(입력,조회,수정,삭제,검색)
+
+RESP API 도큐먼트의 접근과 검색, 벌크등을 해보자.
+
+기본 접근 구조는 아래와같다.
+
+>http://<호스트>:<포트>/<인덱스>/_doc/<도큐먼트 id> 
+
+```bash
+#입력: PUT
+
+PUT hi_index/_doc/1
+{
+  "name": "orenge",
+  "message":"오렌지는 귤이 아니다."
+  
+}
+
+위처럼 중복되지않는 인덱스명을 PUT명령어로 입력하면 인덱스가자동으로 생성된다.
+
+#조회: GET
+
+GET hi_index/_doc/1 ->인덱스의 도큐먼트정보를 보여줌
+GET hi_index/_source ->인덱스의 source하위의 정보들만보여준다. name,message는 source하위의 정보이다.
+
+#삭제 : DELETE
+
+DELETE hi_index/_doc/1  ->인덱스의 1번아이디의 도큐먼트삭제
+DELETE hi_index -> 인덱스를 통째로 삭제
+
+그래서 GET명령으로 해당인덱스를 조회하면, 인덱스가 삭제되었는지 도큐먼트만삭제되었는지에 따라 
+출력되는 오류가 다르다.
+
+★ PUT명령으로 같은 도큐먼트에 다른 내용의 데이터를 넣으면 나중에 실행한 데이터로 덮어씌워지게된다!
+
+PUT hi_index/_doc/1
+{
+  "age":50
+  
+}
+
+PUT hi_index/_doc/1
+{
+  "name": "orenge",
+  "message":"오렌지는 귤이 아니다."
+  
+}
+
+위와 같이 실행하면 hi_index의 id 1번 도큐먼트는 age:50 에서
+name: oerenge, message:오렌지는 귤이아니다 라는 내용으로 바뀌게된다.
+
+```
+
+```bash
+
+#업데이트: POST
+
+POST명령으로도 내용을 생성할수있다. 하지만 아래와 같이 _doc 뒤에 id값을 지정해주지않으면
+id를 자동생성한다.
+
+POST hi_index/_doc
+{
+  "name":"grape",
+  "message":"포도는 샤인머스켓"
+}
+ 
+실행하면 옆의 화면에 "_id" : "svoNUYYBXxFIy6oeXQk1" 라고 id가 자동으로 생성된것을 알수있다.
+
+
+그럼 기본내용을 업데이트해보자. PUT명령은 덮어씌워지니까 POST를 이용한다
+
+POST hi_index/_update/1 -> 인덱스/_update/업데이트할 도큐먼트id 구조이다.
+{
+    "doc":{
+        "age":"10"
+    }
+}
+
+hi_idex의 1번 도큐먼트에 age:10이라는 정보를 추가하겠다는 의미이다.
+
+실행결과
+
+{
+  "name" : "orenge",
+  "message" : "오렌지는 귤이 아니다.",
+  "age" : 10
+}
+```
+
+**벌크API**
+
+```bash
+
+#★_bulk(벌크) 명령
+
+벌크명령은 ID한개당 두줄씩 명령어가들어간다. 두줄이 한쌍이다.
+_bulk 의 명령문과 데이터문은 반드시 한 줄 안에 입력이 되어야 하며 "줄바꿈"을 허용하지않는다!
+
+한번에 여러 명령을 동작시키기위해 사용한다.
+>index, create, update, delete< 의 동작만 가능!
+
+POST _bulk
+{"index":{"_index":"test", "_id":"1"}} -> test인덱스에 id 1번 지정
+{"field":"value one"} -> id 1번에 해당 데이터를 추가해라
+{"delete":{"_index":"test", "_id":"2"}} ->test인덱스 id 2번을 삭제. delete는 데이터 입력줄이없다.
+{"create":{"_index":"test", "_id":"3"}}-> test인덱스에 id3번 지정
+{"field":"value three"} ->id 3번에 해당데이터 추가
+{"update":{"_index":"test", "_id":"1"}} ->test 인덱스의 id 1번지정
+{"doc":{"field":"value two"}} ->doc안의 field를 value two로 바꿔라.
+
+index = 색인이다. 입력이다.
+
+★대용량 데이터와 elastic stack의 Beats나 logstash는 벌크 API를 사용한다!
+```
+
+검색 API를 사용해보자. _search
+
+```bash
+
+#검색 : _search
+
+검색 API는 두가지가있다. URL과 DATA BODY.
+
+#URL
+기본형은 아래와같다.
+>GET 인덱스/_search?q= 검색어
+
+또한 검색어를 입력할때 AND와 OR조건을 줘서, 여러 검색어를 검색할수있는데, 조건은 반드시 "대문자" 로 입력해야한다.
+
+>GET test/_search?q=value AND three 
+
+>GET test/_search?q=field:three -> field의값이 three를포함하는 도큐먼트만 조회한다.
+
+#DATA BODY(데이터본문)
+
+JSON 형식으로 되어있다.
+
+기본형태는 아래와같다.
+
+GET 인덱스/_search
+{
+  "query": {
+    "match": { -> 사용할 쿼리종류 
+      "field": "value" ->인덱스의 찾으려는 필드명:값 형식
+    }
+  }
+}
+
+
+예시
+
+GET hi_index/_search
+{
+    "query":{
+        "match":{
+            "message":"귤이 아니다." 
+        }
+    }
+}
+
+위 처럼 입력하면 hi_index라는 이름을 가진 인덱스에서 message필드의 값이 "귤이 아니다"를 포함하는 도큐먼트를 반환한다.
+
+```
+
+## 로그스태시로 csv,jdbc,카프카 등 원하는 자료를 불러와보자
+
+### 가져오는방법으로 3가지가있다. 
+
+- 로그스태시를 이용하여 자동화,전처리를 거친 후 엘라스틱 서치 /파일데이터(json등)으로 저장하는방법
+- Kibana Data Visualizer 기능을 이용하여 import하는방법. 인덱스 패턴까지 알아서만들어준다는 장점이있다.
+- python elasticsearch 패키지 사용. pip install로 엘라스틱서치를 다운받아 파이썬 스크립트로 작성한다. 
+
+나는 Kibana와 로그스태시를 이용하는방법 두가지를 해볼것이다.
+
+먼저, 로그스태시를 이용해보자.
+
+로그스태시는 필터가없어도 동작하지만, **파이프라인**을 설정해줘야 제대로 동작한다.
+이름log.cofig같은 파일로 생성하여 관리하거나, pipline.yml파일안에서 관리하는편이 좋다.
+
+동작방식은
+    1.원하는데이터를 불러옴 (jdbc,file(csv,json,..),kafka..,syslog)
+    2.로그스태시로 원하는데이터를 불러올때 어떻게 가공하고 처리할건지 ,filter 플러그인이나 output설정을해줌.
+    3.원하는 데이터형식으로 가공이되었으면  엘라스틱서치나,키바나,분석 등을 진행하면된다.
+
+
+### config파일의 기본적인 구조
+
+```python
+input {
+    file{ #입력 플러그인종류. 파일,jdbc,카프카,시스로그사용가능
+        path=> "C:/Users/Na/Desktop/projcet_3_file/산출물/crawling/합친것/news_final.csv" #path는 \=> / 로고쳐줄것
+        start_position => "beginning" #처음파일을 발견했을때 파일을읽을 위치.파일의 시작부분부터 읽어들일지 끝부분부터 읽어들일지 지정할수있다.
+    }
+}
+filter {
+
+}
+
+output {
+    stdout{}
+    
+}
+
+```
+
+confing파일을 실행해보자.(window기준)
+logstash파일이들어있는 경로로가서 아래 명령문 입력
+>logstash가깔려있는경로>.\bin\logstash.bat -f \config\읽어들일 conf파일이름
+
+
+
+**여기서 -f**는 옵션으로, 파일을 읽겠다는 의미의 옵션이다.
+Mysql에서 로그스태시로 원하는데이터를 가져오기위해서는, mysql-connector-java 가 필요하다.
+
+>[mysql-connector-java링크](https://dev.mysql.com/downloads/connector/j/)
+
+위의 링크에서 다운받을수있다. 기본적으로 윈도우로 설정되어있다.
+
+![mysqlconnector java설치](./mysqlconnector%EC%84%A4%EC%B9%98/mysql.PNG)
+
+2023년2월3일기준 8.0.32버전. 아래사진처럼 OS를바꿔주고, zip파일을 받아주자. 
+리눅스같은경우 tar파일을받는다. 
+
+![mysqlzip](./mysqlconnector%EC%84%A4%EC%B9%98/mysqlzip%ED%8C%8C%EC%9D%BC.PNG)
+
+다운로드받은 파일을 압축해제해주면 자바파일(.jar)이 나오는데, 이것을 필요한 프로젝트나 경로에 넣어주고 
+
+jdbc경로에 이 파일이 존재해있는 경로를 써주면된다. 
+
+나는 logstash/lib아래에 넣어뒀다.
+
+이동경로가 logs-7.10.1이라는 가정하에 아래 conf파일이 정상작동했을때,1회성으로만 실행해주면된다.
+output에 엘라스틱서치에 바로 저장시키거나 파일로만들었으면 확인해보면된다.
+
+>.\bin\logstash.bat -f .\config\csv.conf
+
+![logstashmysql에서 데이터가져오기](./gcpmysql%EC%97%90%EC%84%9C%EB%8D%B0%EC%9D%B4%ED%84%B0%EA%B0%80%EC%A0%B8%EC%98%A4%EA%B8%B0.PNG)
+
+
+성공적으로 엘라스틱서버에 저장이되면 conf파일의 output안에서 지정해준 인덱스명으로 검색해보면 아주 잘나오는것을 알수있다.
+
+브라우저
+
+>호스트명:포트명/conf파일에서지정한인덱스명/_search?pretty
+
+터미널
+
+>curl -X GET 호스트명:포트명/인덱스명/_search?pretty
+
+키바나
+
+>GET /mysqltest_2/_search{"query": { "match_all": {}}}
+
+**pretty는 보기좋게 출력하기위함**
+
+![mysql엘라스틱서치적재](./%EC%97%98%EB%9D%BC%EC%8A%A4%ED%8B%B1%EC%84%9C%EC%B9%98mysql%EC%A1%B0%ED%9A%8C.PNG)
+
+
+### mysqlconf파일 내용
+
+```python
+input {
+    jdbc{
+        jdbc_driver_library => "C:/logs-7.10.1/lib/mysql-connector-j-8.0.32.jar"
+        jdbc_driver_class=>"com.mysql.jdbc.Driver"
+        jdbc_connection_string => "jdbc:mysql://ip:port/db명"
+        jdbc_user => "user명"
+        jdbc_password =>"mysqlpassword"
+        schedule => "* * * * *" #아래 sql문을 실행할주기
+        statement => "실행할 쿼리문" #위의 db에서 가져올정보
+    }
+}
+
+filter{
+    # mutate {
+    #     remove_field => ["id", "@version"] 제외하고싶은 필드
+    # }
+}
+
+output {
+    elasticsearch{
+        hosts => ["localhost:9200"] #이벤트를 전송할 엘라스틱서치 주소:포트
+        index => "mysqltest_1" #이벤트를 인덱싱할 대상 인덱스,해당이름이없으면 인덱스를생성하는것같음
+        #document_id =>"%{id}" 저장할 도큐먼트 아이디 지정
+    }
+    stdout{}
+    
+}
+```
+
+
+## 로그스태시를 이용하여 엘라스틱서치에 적재시, 인덱스의 중복값 제거
+
+```python
+input {
+  # Elasticsearch의 모든 문서를 읽습니다. 
+  elasticsearch {
+    hosts => "localhost:9200"
+    index => "mysqltest_1"
+    query => '{ "sort": [ "_doc" ] }'
+  }
+}
+
+filter {
+    fingerprint {
+        key => "1234ABCD"
+        method => "SHA256"
+        source => ["id", "title", "main","writedate","url","press"] #이곳에 작성된 필드들의 값이 동일하면 삭제
+        target => "[@metadata][generated_id]"
+        concatenate_sources => true # <-- 원래 게시 날짜 이후에 새로운 줄이 추가되었습니다.
+    }
+}
+output {
+    stdout { codec => dots }
+    elasticsearch {
+        index => "mysqltest_2" #기존의 인덱스는 유지하고 새로운 인덱스를만들었다.
+        document_id => "%{[@metadata][generated_id]}"
+    }
+}
+```
+
+이후,mysqltest_1인덱스는 curl을 통해 삭제해줬다.
+
+>curl --location --request DELETE "localhost:9200/mysqltest_1"
+
+
+## 엘라스틱서치 환경설정
+  elasticsearch -> config -> jvm.options
+
+JVM heap size 설정가능. 기본적으로 1g로되어있으며, 데이터가 커지면 높여줘야한다. 30g이하로만 설정하길권장
+
+    -Xms1g
+    -Xmx1g
+
+위의 두 값은 늘 같게써주는것이 좋음
+
+## Kibna로 CSV파일 가져오기
+
+## Mysql의 데이터를 엘라스틱 서치에 적재하기
+
+## 엘라스틱 서치에 적재된 데이터를 Kibna와 Nori를이용하여 시각화하기
+
+
+

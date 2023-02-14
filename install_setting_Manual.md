@@ -102,6 +102,7 @@ export HADOOP_CONF_DIR=$HADOOP_HOME/etc/hadoop
 export PATH=$PATH:$HADOOP_HOME/bin:$HADOOP_HOME/sbin
 
 
+souce ~/.bashrc
 
 ★중요! hadoop-env.sh를 설정하러 경로를 변경해줘야함↓
 
@@ -1041,7 +1042,6 @@ nohup logstash -f ~/logstash/test.conf &
 ## 14.셀레니움과 크롬,크롬드라이버 설치하기
 
 우분투에서 크롤링 해오기위해 셀레니움과 크롬드라이버를 설치하자.
-
 ```bash
 
 1.아래내용을 차례대로 입력
@@ -1086,9 +1086,8 @@ sudo pip install pyvirtualdisplay (xvfb를 사용하게 도와주는 패키지)
 3.셀레니움 설치
 
 pip install selenium
-
-
 ```
+
 ## 파이어폭스로 셀레니움쓰기
 
 geckodriver이용
@@ -1118,6 +1117,54 @@ browser.get(가져올url주소)
 변수 = browser.find_elements(By.조건 , 상세조건 )
 
 find_elements는 리스트를 반환하고 없으면 빈 리스트를반환한다. 그냥 element는 한개만.
+
+## DBeaver 설치
+
+DBeaver란? 무료 DB중하나로써 많은종류의 DB를 지원한다. JAVA기반으로 작동한다는 특징이있으며
+오픈소스이다.
+실행할수있는 환경은 윈도우,리눅스,MAC 에서 구동시킬수있다.
+
+더 자세한내용은 [DBeaver홈페이지](https://dbeaver.io/)에가서 확인해보자 
+
+나는 DBeaver를 추천받아 많은 종류의 DB를 지원한다는것을 보고 편리할것같아 설치하였다.
+
+1.위에 링크로 연결되어있는 공식 홈페이지에들어가 Download 클릭
+
+![디비버 공식홈페이지](./DBeaver.PNG)
+
+위와같은 페이지가나오면 DBeaver Community에서
+자신에게 맞는 OS를선택해 파일을 다운로드한다.
+나는 window에 설치할것이라서 install파일로 받았다.
+
+2.언어와 설치옵션을 선택하자
+
+▼ install 파일을 실행시키면 아래와같은 화면이뜬다.
+
+![디비버 언어 설치](./DBeaver_2.PNG)
+
+영어,한국어,일본어 하고싶은대로 선택하고 다음을누르자
+
+
+![디비버 설정](./DBeaver_3.PNG)
+
+모든유저가 사용할수있도록할것인지 특정 유저만 사용할수있게할것인지 선택.
+
+![디비버 설정2](./DBeaver_4.PNG)
+
+여기서 필수는 기본으로 선택되어있는 위의 두개이다.(Java기반으로 개발되었으니 당연히 Java가필요함,맨위의DBeaver는 우리가 원래설치하려던것이니까 당연)
+
+그럼 밑에두개는 뭘까해서 찾아봤더니
+
+- Rest Settings : 전에 DBeaver가 깔려있었을수도있으니 초기화하는것
+- Associate .SQL files : SQL파일들을 실행시키거나 오픈하면 기본적으로 DBeaver를 실행시킴
+
+이렇게 이해하면될것같다. 나는 두개 다 필요없으니 패스했다.
+
+![디비버 설치3](./DBeaver_5.PNG)
+
+마지막으로 설치할 저장소를 선택해주면, 알아서 설치가되고 끝난다.
+
+
 
 
 -----

@@ -34,13 +34,14 @@ ssh-keygen -t rsa -P '' -f ~/.ssh/id_rsa -> SSH-KEYGEN으로 SSH키를만들건�
 
 그럼 그냥 id_ras 라는 파일과 id_ras.pub가 생기는데 .pub가 '공개키'이고, 이름만있는게 '개인키'이다.
 
+※참고로 wsl말고 윈도우환경일경우 %UserProfile%.ssh\ 경로에 키가 저장되게된다.
 
 ### 비밀키를 가지고있는 클라이언트에 접속할때 자동인증 처리를해보자
 
 보통은 .pub파일 내용을 복사하여 메일을 보내야하는데 귀찮으니까 autohorized_keys로 자동인증처리를하자.
 
 
-cat ~/.shh/id_rsa.pub >> ~/.ssh/authorized_keys
+cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
 
 -> id_rsa.pub라는 공개키를 cat명령어 >> 를 이용해 authorized_keys 라는 **이름으로 바꾸어 파일을 복사하였다.**  > 는 기존파일을 삭제하고 새로만들고, >>는 기존파일을 유지하고 새로만드는것
 
@@ -57,7 +58,7 @@ install_setting매뉴얼을 따라 HADOOP설치 후 , start-all.sh 입력 하고
 
     localhost: ssh: connect to host localhost port 22: connection refused
 
-위와같은 에러를 만날수있게된다.(WSL 환경) SSH-SERVER를 설치안했으면 이게 가장 큰 이유겠지만, 나같은경우는 설치는되어있는경우였기에 포트나 방화벽문제로 추정됐다. 그리고 알아본결과 이유는 SSH를 설치하고 공개키는 설정했는데 **포트**가 **열려있지않아** 발생한 오류였다. 고로 포트를 열어주면 해결되는문제인데, WSL는 과정이 좀 험난하다(SYSYEMCTL을 사용못하기때문에)
+위와같은 에러를 만날수있게된다.(WSL 환경) SSH-SERVER를 설치안했으면 이게 가장 큰 이유겠지만, 나같은경우는 설치는되어있는경우였기에 포트나 방화벽문제로 추정됐다. 그리고 알아본결과 이유는 SSH를 설치하고 공개키는 설정했는데 **포트**가 **열려있지않아** 발생한 오류였다. 고로 포트를 열어주면 해결되는문제였다.
 
 해결과정은 아래와 같다.
 
@@ -91,7 +92,7 @@ Proto Recv-Q Send-Q Local Address
 ![hosts.deny](/%EC%A0%9C%ED%95%9C%ED%95%98%EA%B8%B0.PNG)
 
 **단, 하둡과 연결작업하는데 sshd:all로 막아버리면 노드들은 올라오지만, 오류가나니까 가급적 쓰지말기**
-(내일물어볼수잇으면 물어보기)
+
 
 
 ## WSL설치 경로찾기
@@ -251,7 +252,7 @@ DB운영하다보면 용량(디스크 용량)이 부족한 상태가될수도있
 
 GCP란? 구글클라우드의 약자이다. 일종의 VM인데, 구글의 거대한 컴퓨터중의 한조각을 빌려쓰는거와같다. VM환경설정을 세세하게할수있고 (사양, 네트워크,보안,방화벽 등등) 콘솔에 접속하여 손쉽게 관리할수있다는 장점이있다.
 
-AWS<->GCP 둘다같은거다. 서비스하는곳이 다를뿐..
+AWS<->GCP 클라우드서비스이다. 서비스하는곳이 다를뿐..
 
 GCP에대한 자세한 환경설정과 설명에관해서는 아래 링크 참조
 
@@ -279,12 +280,12 @@ GCP에대한 자세한 환경설정과 설명에관해서는 아래 링크 참�
 
 1.SSH키 생성
 
-로컬에서만드는 방식
+보통
 >ssh-keygen -t rsa -P '' -f ~/.ssh./키아이디
 
 보통은 이렇게만들고, 알아서 pub파일이 만들어진다.
 
-GCP용 SSH키 만드는 방식
+내가쓸 GCP용 SSH키 구성
 
 >ssh-keygen -t rsa -f ~/.ssh/키아이디 -C 구글아이디 -b rsa암호화방식값
 
@@ -590,9 +591,140 @@ EnterPassword:
 
 위와같이 입력하여 계정이 외부접속이가능하게 되어있는지 확인하자. localhost로되어있다면 새로 계정을 만들어줘야한다. %나 특정ip주소로.
 
+## GCP에 HADOOP설치
+
+install_setting_Manual에 나와있는 과정과 같이 master용으로 사용할 HADOOP을 GCP에 설치하다가 
+
+**localhost: 계정명@localhost: Permission denied (publickey).** 을 만났다.
+
+↓ 아래 블로그의 내용을 참고하여 해당문제를 해결하였다. 문제의 원인은 아마도 기존 ssh키와 엉켜서 문제가되었던것같다. 또한, 아래 블로그는
+하둡실행시 발생할수있는, **rcmd socket permission denied** 문제도 해결할수있는 부분이있어 많은 도움이되었다. 
+
+[GCP에서 하둡설치하기](https://private-space.tistory.com/42)
+
+블로그의 코드에서 SSH입력 후 저장은 ssh키를 등록해주면된다.
+
+    sudo vi /etc/ssh/sshd_config
+
+    32라인 근처
+    PermitRootLogin yes로 변경
+    권한이 설정되면 sshd 재시작, ssh 접속 시 password가 필요하지 않게끔 변경한다.
+    sudo service sshd restart
+    ssh-keygen -t rsa -P '' -f ~/.ssh/id_rsa
+    cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
+    chmod 0600 ~/.ssh/authorized_keys
+
+    =======================pdsh default설정 부분=============================
+    sudo vi /etc/pdsh/rcmd_default (ssh 입력 후 저장)  #이부분이 rcmd socket permission denied 오류를발생시키지않게한다. rcmd의 기본값이rsh라서 발생하는 문제라고한다. 고로, 기본값을 ssh로 바꿔준다.
+    ssh localhost
 
 
----------------------------------
+![rcmd_default](./GCP%ED%95%98%EB%91%A1%EC%84%A4%EC%B9%98/sshlocalhost%EB%AC%B8%EC%A0%9C%ED%95%B4%EA%B2%B0_1.PNG)
+
+**remd_default 파일 내부**
+
+![GCP_ssh_localhost성공](./GCP%ED%95%98%EB%91%A1%EC%84%A4%EC%B9%98//sshlocalhost%EB%AC%B8%EC%A0%9C%ED%95%B4%EA%B2%B0_2.PNG)
+
+
+
+
+## 도커를 이용해서 장고를 설치하고 gcp에 컨테이너를 올려 배포해보자.
+
+1. 도커의 기본적인사용법
+
+(윈도우기준)
+설치는 도커 공식홈페이지에들어가서 문서에 나와있는대로 설치하면된다.
+
+중요한건 어떤방법으로 이미지를 생성할것인가? 그리고 그 이미지를 어떻게만들어서 실행시키고 컨테이너화 시킬것인가? <나는 이부분에서 꽤 많이해맸다.
+
+그래서 내가 보려고 정리한것
+
+- 첫번째로 docker파일을 ide로(리눅스면 그냥 아무 txt파일 생성해도 괜찮다. 윈도우도 마찬가지.)생성한다. 나는 VSCODE를 사용하였다.
+
+나는 dockerfile이라는 이름으로 도커파일하나를 만들었다.
+그리고 아래와같이 내용을 입력하여 django이미지를 생성하였다.
+
+FROM python:3.9.15 #사용할 파이썬버전
+WORKDIR C:\Users\Na\Desktop\projcet_3_file\testdjango #실행시길 디렉터리위치
+RUN pip install Django==4.1.4 # django4.1.4 버전을 설치할것이다
+RUN django-admin startproject t_djnago #t_django라는 프로젝트를 생성한다.
+CMD ["python", "./t_djnago/manage.py", "runserver", "0.0.0.0:9510"] #cmd에서 명령어 입ㅂ력시 파이썬으로 t_dajngo프로젝트안의 manage.py를 실행한다, 어디서나 접속가능한 포트는 9510으로줬다.
+
+-만든 도커파일을 이미지화 시켰다. 
+> ~$: docker build -t 이미지이름 docker파일경로 / 만약 dockerfile의 위치가 지금현재위의 안에 들어있는 파일이라면 경로대신 . 만써도된다. 이미지 파일이름은 만들고싶은대로.
+> 경로상에 도커파일이있는데 못찾거나 도커파일이 여러개인 경우, 옵션 -f를 사용해 정확한 파일이름을지정해주면된다.
+
+-이미지가 제대로 만들어졌으면 확인해보자
+
+> ~$:docker images 
+제대로 만들어졌다면, 이미지 목록들이 쭉 뜨고, 윈도우같은경우 도커 대시보드에서 확인가능
+
+
+-이미지를 컨테이너화 시키고 실행시켜보자!
+
+나는 장고를 실행시킬것이기때문에 장고서버가 제대로 작동하는지 봐야한다.
+
+> ~$: docker run [옵션] [이미지이름]  (기본문)
+
+옵션으로는 --name 컨테이너이름(컨테이너 이름이 중복되지않는한에서 생성함)
+-rm 삭제
+-dp 새컨테이너를 백그라운드모드에서 실행한다.
+- 포트번호:포트번호 호스트의 포트번호와 컨테이너의 포트번호를 매핑시킨다. 포트매핑이없으면 애플리케이션에 접근하지못하므로, 꼭 해줘야한다.
+ex) docker run --name 컨테이너명 -dp 9510:9510 이미지이름
+위와같은 형식.
+
+그래서 실행시켜보면, 도커 대시보드에서 컨테이너가 생성된걸 확인할수있고 실행시 초록색으로 바뀐다.
+
+![도커장고](./%EB%8F%84%EC%BB%A4%EC%9E%A5%EA%B3%A0%ED%85%8C%EC%8A%A4%ED%8A%B8.png)
+
+성공이다.
+
+## 도커허브를 이용하여 gep에도올리고 배포해보자
+
+[도커허브](https://hub.docker.com/)
+>docker push nagyoung/djangodockerlena:tagname 
+이게 내 저장소이름이다. 여기에 push하거나 pull할수있다.
+나는 이걸 올리고 gcp에서 배포할것이다.
+
+기본적으로 도커허브는 github와 사용법이 비슷한데, 우선 로그인을해주자.
+
+터미널창을열어 docker login으로 로그인한다.
+
+정상적으로 로그인시 Login Succeeded라는 메세지가 출력된다.
+
+이후 허브(웹사이트)에서 레포지터리를 하나생성 후
+레포지터리 이름을 복사하여 허브에 올릴 이미지를 레포지터리 이름과 동일하게 맞춰준다.
+(태그빼고)
+
+만약 이미지 이름을 바꿔야할시
+
+>docker tag 기존이미지이름:tag 바꿀이미지이름:tag
+
+그리고 push를 해준다.
+
+>docker push 올릴이미지이름(레포지터리이름과 동일):태그이름
+
+태그이름은 레포지터리이름과 동일할필요가없기때문에 태그이름으로 이미지를 구분한다고생각할수있다.
+
+성공했으면 뭔가 올라가기시작하고 도커허브홈페이지에서 이미지가 올라간걸 확인할수있다.
+
+
+### 이번엔 gcp에 올려서 배포해보자
+
+여기도 깃허브와같이 도커이미지파일을 push할수있다.
+다만, 이미지의 이름이 정해져있는 규칙이있어서 거기에맞게 생성해줘야한다.
+
+>docker build -t asia.gcr.io/[google_project_id]/mail-service:v1
+
+-t:이미지에 태그를정하는옵션
+asia.gcr.io/[google_project_id]/~ :v1: 구글컨테이너 레지스트리에 올리기위한 이름규칙
+
+나는 이미 도커파일을 재빌드할것이니까 위의 빌드명령을 따른다.
+
+**주의: 프로젝트 아이디는 프로젝트이름이아님! 프로젝트이름을 클릭하면 옆에 ID값이따로나옴**
+
+
+-----------------------------
 
 ### 진행상황
 
@@ -602,6 +734,8 @@ airflow db init 하면 mysql을 찾을수없다고나옴.
 /usr/local/mysql/lib안에 mysql이없음... 
 
 ->해결. airflow mysql 테이블과 계정을 제대로 연동이안되어있었던걸로 추정된다.
+
+도커잠시 중단. Kibana 서비스추가 중.
 
 --------------------------------
 
