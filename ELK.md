@@ -1057,8 +1057,903 @@ GET hi_index/_search
 }
 
 위 처럼 입력하면 hi_index라는 이름을 가진 인덱스에서 message필드의 값이 "귤이 아니다"를 포함하는 도큐먼트를 반환한다.
+```
+
+## 풀텍스트 쿼리
+
+match, match_phrase, query_string을 알아보자
+
+```bash
+
+#match_all
+
+match쿼리는 기본적으로 OR 조건으로 이루어져있다. operator 옵션을 주지않으면
+검색어를 OR로 묶어서 결과를 가져온다.
+
+GET my_index/_search
+{
+  "query": {
+    "match": {
+      "message": "dog"
+    }
+  }
+}
+
+가장 기본적인 형태의 match 쿼리이고, 따로 옵션을 주지않아서 "message"필드에 "dog"가 포함되어있는
+결과를 모두 가져온다.
+
+만약 "message": "quick dog"이면, "qucik"/ "dog" 을 OR 조건으로 묶어서 검색결과를 가져온다
+
+OR -> AND 바꾸고싶으면
+
+GET my_index/_search
+{
+  "query": {
+    "match": {
+      "message": {
+        "query": "quick dog",
+        "operator": "and" -> OR를 AND 로바꿔서 검색함. qucik 와 dog을 둘 다 포함하는 결과만 가져온다.
+      }
+    }
+  }
+}
+
+#match_phrase
+
+match_phrase는 구문을 가져오고싶을때 사용한다.
+
+"quick dog"을 입력하면, "quick dog" 이라는 한 구문을 포함한 결과를 가져온다.
+
+GET my_index/_search
+{
+  "query": {
+    "match_phrase": {
+      "message": "lazy dog" -> lazy dog 이라는 구문을 포함한 결과를 반환함.
+    }
+  }
+}
+
+결과 ▼
+
+"_source" : {
+         "message" : "The quick brown fox jumps over the lazy dog"
+    }
+
+
+match_phrase에는 slop이라는 옵션을 줄수있다.
+
+  "query": {
+    "match_phrase": {
+      "message": {
+        "query": "lazy dog",
+        "slop": 1 -> lazy와 dog 사이에 단어를 1개까지 허용한다. 2,3을주면 단어를 2,3개를허용.
+        
+      }
+    }
+  }
+
+slop: 즉, query에서 찾을 구문사이의 허용할 단어 갯수
+
+#query_string
+
+GET my_index/_search
+{
+  "query": {
+    "query_string": {
+      "default_field": "message",
+      "query": "(jumping AND lazy) OR \"quick dog\"" -> jumping과 lazy를 포함하거나, "quick dog" 구문을 포함하는 결과를 가져오는것
+    }
+  }
+}
+
+qyery_string은 match_phrase와 match를 섞어서 쓰는것처럼 사용할수있다.
+
+위의 "quick dog" 밖에 ""로 한번 더 감싼것은 match_phrases처럼 사용하기위한 문법
+```
+
+FULL TEXT
+
+FULL TEXT는 검색결과에 score점수가있어서 점수가높은순대로 결과가 나온다는 특징이있다.
+
+SCORE를 계산하기위한 요소에는 아래와 같이 세가지가있다.
+
+- Term: 검색할 단어를 Term이라고부른다.
+
+- TF(Term Frequency): 도큐먼트내에 검색하려는 단어수가 많은것에대해 더 높은 점수를 주는것(EX:A페이지에 빈도수3, B페이지에 빈도수5이면, B페이지의 SCORE점수가 더높은것)
+  
+- IDF(Inverse Document Frequency): TF와 별개로 Term자체가 가지는 별도의 점수.
+  Term에서 더 빈도수가 낮은것을 희소성이 높다고 판단해 더 높은 Scroe점수를 준다.(단어가 흔해지면 낮은점수를 주는 구조)
+
+- Field Length: 길이가 긴 필드보다 짧은 필드를 더 높은 점수를 준다.
+
+```bash
+
+# socre점수 
+
+GET my_index/_search
+{
+  "query": {
+    "match": {
+      "message": {
+        "query": "quick dog",
+      "operator": "or"
+    }
+    }
+  }
+}
+
+위와같은 명령어를 실행했을때
+
+결과▼
+      {
+        "_index" : "my_index",
+        "_type" : "_doc",
+        "_id" : "3",
+        "_score" : 0.87627405,
+        "_source" : {
+          "message" : "The quick brown fox jumps over the quick dog" ->quick이 2번들어감
+        }
+      },
+      {
+        "_index" : "my_index",
+        "_type" : "_doc",
+        "_id" : "2",
+        "_score" : 0.6744513,
+        "_source" : {
+          "message" : "The quick brown fox jumps over the lazy dog" ->quick1번 dog1번
+        }
+      },
+      {
+        "_index" : "my_index",
+        "_type" : "_doc",
+        "_id" : "1",
+        "_score" : 0.6173784,
+        "_source" : {
+          "message" : "The quick brown fox"
+        }
+      },
+      {
+        "_index" : "my_index",
+        "_type" : "_doc",
+        "_id" : "5",
+        "_score" : 0.35847887,
+        "_source" : {
+          "message" : "Lazy jumping dog"
+        }
+      },
+
+아래와 같이 _socre가 Full Text의 세가지 요소를 거쳐서 산출된 Score점수이다.
+해당 점수에따라 점수가 높은순부터 먼저나온다.
+```
+
+## Bool(복합)쿼리 / Range(범위)쿼리
+
+여러개의 쿼리를 함께쓰기위한것이 Bool쿼리이다. 
+여러개의 쿼리를 Bool쿼리안에 같이넣어서 사용한다.
+
+아래와 같이 4가지 요소있고 **배열**로 넣는 방식이다.
+
+- must : 해당 요소안에 들어가는 쿼리는 무조건 **True**이여야함. 
+- must_not : 해당 요소안에 들어가는 쿼리는 무조건 **Flase**이여야함
+- should : 검색 결과중에(must, must_not으로 걸러진) 해당 요소안에 들어가있는 쿼리는 Score점수를 높임 
+- filter : Must와 같지만 Score를 반영하지않는다. Score를 반영하지않기때문에 must보다 빠르다는 장점이있으며 캐싱이 가능함.
+
+```bash
+
+#Bool 기본형태
+
+GET <인덱스명>/_search
+{
+  "query": {
+    "bool": {
+      "must": [
+        { <쿼리> }, …
+      ],
+      "must_not": [
+        { <쿼리> }, …
+      ],
+      "should": [
+        { <쿼리> }, …
+      ],
+      "filter": [
+        { <쿼리> }, …
+      ]
+    }
+  }
+}
+
+
+EX) "quick"이라는 단어 AND "lazy dog"이라는 구문을 포함하는 검색결과를 찾는다.
+
+GET my_index/_search
+{
+  "query": {
+    "bool": { ->복합쿼리를 사용할것
+      "must": [ -> must:[] must배열안에 들어있는 쿼리문들을 모두 만족하는결과만 반환한다.
+        {
+          "match": { ->쿼리1
+            "message": "quick" ->"quick"이라는 단어를 포함해야함
+          }
+        },
+        {
+          "match_phrase": { ->쿼리2
+            "message": "lazy dog" ->"lazy dog" 이라는 구문을 포함해야함.
+          }
+        }
+      ]
+    }
+  }
+}
+
+결과)
+    "max_score" : 1.3887084,
+    "hits" : [
+      {
+        "_index" : "my_index",
+        "_type" : "_doc",
+        "_id" : "2",
+        "_score" : 1.3887084,
+        "_source" : {
+          "message" : "The quick brown fox jumps over the lazy dog"
+        }
+      }
+    ]
+
+쿼리문에서 bool안에 must를 주고 must안에 match와 match_phrase로 검색했기때문에, match와 match_phrase 쿼리를 만족하는 결과만 반환한다.
+
+# must not
+
+EX) "quick"은 반드시 포함해야하지만 "lazy dog"은 포함하지않는 결과만 가져온다. 
+
+GET my_index/_search
+{
+  "query": {
+    "bool": {
+      "must": [
+        {
+          "match": {
+            "message": "quick"
+          }
+        }],
+        "must_not":[
+        {
+          "match_phrase": {
+            "message": "lazy dog"
+          }
+        }
+      ]
+    }
+  }
+}
+
+
+#Should
+
+검색결과중에 should안에있는 쿼리의 결과를 Score점수를 높임
+
+EX)
+
+GET my_index/_search
+{
+  "query": {
+    "bool": {
+      "must": [
+        {
+          "match": {
+            "message": "fox" ->must로 match를이용하여 message 필드가"fox"단어를 포함하는 결과만도출
+          }
+        }
+      ],
+      "should": [
+        {
+          "match": {
+            "message": "lazy" ->위에서 나온 결과에서 "lazy" 단어를 포함하는 결과의 score점수를 높임
+          }
+        }
+      ]
+    }
+  }
+}
 
 ```
+Exact Vlue Query
+
+＊정확값 쿼리.검색한 조건에 T/F 여부만 판별한다.
+Full Text는 아니다. term, range 쿼리가 해당 쿼리안에 속하며, Score를 계산하지않는다는 특성이있어서
+bool 쿼리의 filter 내부에서 사용한다.
+
+```bash
+
+#bool: filter
+
+
+EX 1)
+
+GET my_index/_search
+{
+  "query": {
+    "match": {
+      "message": "fox" ->"fox"만 포함
+    }
+  }
+}
+
+결과 : id 1/ 0.329517 | id 3/ 0.23470736 | id 2/ 0.234707
+
+EX 2)
+
+GET my_index/_search
+{
+  "query": {
+    "bool": {
+      "must": [
+        {
+          "match": {
+            "message": "fox" ->"fox" AND
+          }
+        },
+        {
+          "match": {
+            "message": "quick" ->"quick"포함
+          }
+        }
+      ]
+    }
+  }
+}
+
+결과: id 1/ 0.9768958 | id 3/ 0.8762740 | id 2/ 0.6744513
+
+★EX1,EX2를 비교했을때 각각 스코어점수가 오른것을 볼수있다
+
+EX 3)
+
+GET my_index/_search
+{
+  "query": {
+    "bool": {
+      "must": [
+        {
+          "match": {
+            "message": "fox"
+          }
+        }
+      ],
+      "filter": [ ->아래 쿼리에 filter 조건 적용
+        {
+          "match": {
+            "message": "quick" -> "quick"포함
+          }
+        }
+      ]
+    }
+  }
+}
+
+결과: id 1/ 0.329517 | id 3/ 0.234707 | id 2/ 0.234707(3과동일)
+
+★ 결론
+- EX2는 EX1(기본점수)에서 Score점수가 증가하여 Score점수에 영향을준다는것을 알수있다. 
+- EX1(기본점수) 와 EX3은 점수가 동일한것으로보아 Filter가 Score점수에 영향을 주지않는다는것을 알수있다.
+```
+Range Query(범위 쿼리)
+
+범위형쿼리는 문자말고 숫자,날짜등의 범위를 검색할수있는 쿼리이다.
+
+```bash
+
+#Range Query(범위 쿼리)
+
+기본형
+> range : { 필드명  : {파라미터:값} } 
+
+#파라미터 종류
+
+범위형 쿼리는 총 4가지의 파라미터를 가지고있다.
+
+- get : >= 이상
+- gt : > 초과
+- lte : <= 이하
+- lt : < 미만
+
+#예시 범위형 데이터
+POST phones/_bulk
+{"index":{"_id":1}}
+{"model":"Samsung GalaxyS 5","price":475,"date":"2014-02-24"}
+{"index":{"_id":2}}
+{"model":"Samsung GalaxyS 6","price":795,"date":"2015-03-15"}
+{"index":{"_id":3}}
+{"model":"Samsung GalaxyS 7","price":859,"date":"2016-02-21"}
+{"index":{"_id":4}}
+{"model":"Samsung GalaxyS 8","price":959,"date":"2017-03-29"}
+{"index":{"_id":5}}
+{"model":"Samsung GalaxyS 9","price":1059,"date":"2018-02-25"}
+
+
+#gte, lt
+
+EX1) 숫자형 "값"을 찾아본다. price필드가 700 이상, 900미만인 검색결과를 찾는다
+
+GET phones/_search
+{
+  "query": { ->아래내용 찾을것
+    "range": { ->쿼리종류를 범위형데이터로(range)
+      "price": { ->필드명
+        "gte": 700, -> >= 이상
+        "lt": 900 -> < 미만
+      }
+    }
+  }
+}
+
+결과 ▼
+    {
+        "_index" : "phones",
+        "_type" : "_doc",
+        "_id" : "2",
+        "_score" : 1.0,
+        "_source" : {
+          "model" : "Samsung GalaxyS 6",
+          "price" : 795,
+          "date" : "2015-03-15"
+        }
+      },
+      {
+        "_index" : "phones",
+        "_type" : "_doc",
+        "_id" : "3",
+        "_score" : 1.0,
+        "_source" : {
+          "model" : "Samsung GalaxyS 7",
+          "price" : 859,
+          "date" : "2016-02-21"
+        }
+        }
+        
+EX2) 
+
+GET phones/_search
+{
+  "query": {
+    "range": {
+      "date": {
+        "gt": "2016-01-01",
+        "lt": "2017-01-01"
+      }
+    }
+  }
+}
+
+결과 ▼
+
+{
+
+      {
+        "_index" : "phones",
+        "_type" : "_doc",
+        "_id" : "3",
+        "_score" : 1.0,
+        "_source" : {
+          "model" : "Samsung GalaxyS 7",
+          "price" : 859,
+          "date" : "2016-02-21"
+        }
+
+      }
+}
+
+```
+
+## 데이터 색인, 텍스트 분석
+
+Elasticsearch는 역 인덱스라는 자료구조 형태로 **텍스트데이터**를 저장한다.
+
+텍스트 데이터를 Term(단어)단위로 쪼개서 해당 Term이 어느 도큐먼트들에 포함되어있는지를
+찾아서 전체 도큐먼트에서 찾는게아니라 Term이 포함되어있는 도큐먼트들에서만 찾아서 빠르다.
+
+![기본 RDBMS 저장구조](https://1535112035-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-Ln04DaYZaDjdiR_ZsKo%2F-Lo--uX4jUMQUTUvBgeF%2F-LntIdlIDXEduASJCXRm%2F6.1-02.png?alt=media&token=158baec3-905d-4f92-8824-cac8d0239756)
+
+▲ 기본 RDBMS는 Term으로 구분하지않고, 테이블을 만들어서 순서대로 하나하나 저장하고, 검색할때도 차례대로 검색한다.
+
+![Elasticsearch 저장구조](https://1535112035-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-Ln04DaYZaDjdiR_ZsKo%2F-LntL_BGpuFbNXy_sFtK%2F-LntLbibpXHABupWvXtu%2F6.1-03.png?alt=media&token=d2726f20-a7ea-4219-bcb0-340cbe1d21f1)
+
+▲ Term(단어)를 쪼개서 텍스트 데이터들을 관리한다. 
+
+그래서 대용량 데이터를 다룰때 Elasticsearch가 더빨리찾는다.
+
+출처:[Elasticsearch공식가이드북](https://esbook.kimjmin.net/06-text-analysis/6.1-indexing-data)
+
+
+### 텍스트 분석
+
+Term단위로 저장하기위해 문장을 Term으로 쪼개는 과정을 텍스트 분석이라고한다.
+해당 작업을 수행하기위해 Elasticsearch안에는 Analyzer라는 분석기가있다.
+
+구조는 아래와 같다.
+
+![ElasticsearchAnalyzer](https://1535112035-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-Ln04DaYZaDjdiR_ZsKo%2F-LntYrdKmTe441TqYAJl%2F-LntZ63SAIfHu6Q_OgzJ%2F6.2-02.png?alt=media&token=52213afe-e6ab-4bc2-b9e0-20027542a79e)
+
+
+순서대로 텍스트 데이터가 들어오면 
+
+>캐릭터 필터 -> 토크나이저 -> 토큰필터 과정을 거치게된다.
+
+- 캐릭터 필터: 세가지 필터가있고, 텍스트 데이터를 세가지 필터에따라 토크나이저에서 사용할수있게 텍스트를 다듬어주는게 캐릭터 필터가 하는일이다. 전처리과정이라고 생각하면된다. (HTML이면 특정 태그를 치환한다던가, 삭제한다던가하는 과정)
+
+- 토크나이저: 캐릭터 필터를 거쳐 들어온 다듬어진 텍스트 데이터를 Term단위로 쪼개는과정을 담당한다.
+ 
+- 토큰필터: 토크나이저를 통해 쪼개진 Term을 토큰필터가 가공을한다.
+
+토큰 필터는 아래와같은 원리로 작동을한다.(사진은 lowercase토큰필터를 적용했으므로, 대문자->소문자로 가공한다.)
+
+첫번째로 단어를 통일화시키고 병합한다.
+
+![토큰필터의 작동구조](https://1535112035-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-Ln04DaYZaDjdiR_ZsKo%2F-LntbFF1Cbw9kue34dxC%2F-LntbHMfIKRZOiCl7KmN%2F6.2-03.png?alt=media&token=91afddea-ec2e-4989-a751-20a689374b08)
+
+lowercase토큰필터로 대문자 ->  소문자로 바꾼 후, 같은 단어들을 병합
+
+두번째  **불용어 제거**과정을 거친다. (불용어=stopword, the,an,..조사)
+
+![토큰필터 작동구조2](https://1535112035-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-Ln04DaYZaDjdiR_ZsKo%2F-LntdTZrPbJB3nIxslS_%2F-LntdYna6xmoecLuIbcL%2F6.2-05.png?alt=media&token=4e537bb0-76a1-4b98-877d-ceabe3e71bd9)
+
+검색에서 가치가없는 단어들을 제거하는 작업을거쳐준다.
+
+세번째로 **형태소 분석**을한다.
+
+![토큰필터 작동구조3](https://1535112035-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-Ln04DaYZaDjdiR_ZsKo%2F-Lntet01jJphNCVzIo7v%2F-Lntf24nCf5pgDeswY5d%2F6.2-06.png?alt=media&token=4140c045-ee24-443f-b927-84cfdad57a9f)
+
+jumps, jumping 같은 단어들을 원형 jump로 바꾼 후, jump라는 토큰으로 병합한다.
+
+추가) 연관성이있는 단어 동의어로 저장(synonym 토큰필터 이용)
+
+![토큰필터 작동구조4](https://1535112035-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-Ln04DaYZaDjdiR_ZsKo%2F-LntgOPNccbFlmVJP9gx%2F-LntgR3I2LDe35aKI--u%2F6.2-07.png?alt=media&token=b758aac1-6f16-4a8f-8649-bd5a131adbbc)
+
+quick Term에 fast를 synonym토큰필터를 이용하여 동의어로 지정하면, fast로 검색해도 quick을 포함하는 도큐먼트가 검색되도록 할수있다.
+
+
+
+위의 사진에서 보는것과같이, 토큰필터는 **가공**을 담당한다. 
+Elasticsearch에서 제공하는 기본 분석기, 토큰필터도있고, 기본말고 수많은 토큰필터나 텍스트 분석기들이있다. 
+
+**데이터를 어떻게 분석하고 가공하고싶은지에따라 필요한 토큰필터와 분석기를 이용하면된다.**
+
+### Analyze API
+
+```bash
+
+#_analyzer API (텍스트 분석)
+
+GET _analyze
+{
+  "text": "The quick brown fox jumps over the lazy dog", ->분석할 text
+  "tokenizer": "whitespace", ->토크나이저 종류
+  "filter": [ -> 사용할 토큰필터의 종류
+    "lowercase", -> 모든문자의 소문자화
+    "stop",  ->불용어 제거
+    "snowball" ->형태소분석 
+  ]
+}
+
+▼ 결과
+
+{
+  "tokens" : [
+    {
+      "token" : "quick",
+      "start_offset" : 4,
+      "end_offset" : 9,
+      "type" : "word",
+      "position" : 1
+    },
+    {
+      "token" : "brown",
+      "start_offset" : 10,
+      "end_offset" : 15,
+      "type" : "word",
+      "position" : 2
+    },
+    {
+      "token" : "fox",
+      "start_offset" : 16,
+      "end_offset" : 19,
+      "type" : "word",
+      "position" : 3
+    },
+    {
+      "token" : "jump",
+      "start_offset" : 20,
+      "end_offset" : 25,
+      "type" : "word",
+      "position" : 4
+    },
+    {
+      "token" : "over",
+      "start_offset" : 26,
+      "end_offset" : 30,
+      "type" : "word",
+      "position" : 5
+    },
+    {
+      "token" : "lazi",
+      "start_offset" : 35,
+      "end_offset" : 39,
+      "type" : "word",
+      "position" : 7
+    },
+    {
+      "token" : "dog",
+      "start_offset" : 40,
+      "end_offset" : 43,
+      "type" : "word",
+      "position" : 8
+    }
+  ]
+}
+
+#★ Elasticsearch에 저장된 인덱스에 _analyze를 적용
+
+※어떤 데이터를 불러와서 분석기로 분석하고싶으면 
+분석기를 지정한 인덱스 먼저 생성하고 도큐먼트(데이터)를 넣어줘야한다.
+
+1. 예시 인덱스생성)
+
+PUT my_index2
+{
+  "mappings": {
+    "properties": {
+      "message": { -> 필드이름
+        "type": "text", -> 필드 타입지정. 텍스트 필드로 지정
+        "analyzer": "snowball" ->사용할 분석기 지정
+      }
+    }
+  }
+}
+
+위와 같은 인덱스를 생성하면 my_index2에 message필드에 삽입되는 도큐먼트들은 snowball 분석기를 통해 가공된 형태로 text타입으로 Elasticsearch에 저장되게된다.
+
+2. 생성한 예시 인덱스에 도큐먼트 삽입)
+
+PUT my_index2/_doc/1
+{
+  "message": "The quick brown fox jumps over the lazy dog"
+}
+
+
+3. 분석기를 통해 제대로 가공이되었는지 GET_search로 확인
+
+3-1: "jumps"로 찾기
+
+GET my_index2/_search
+{
+  "query": {
+    "match": {
+      "message": "jumps"
+    }
+  }
+}
+
+
+▼ 결과
+
+      {
+        "_index" : "my_index2",
+        "_type" : "_doc",
+        "_id" : "1",
+        "_score" : 0.2876821,
+        "_source" : {
+          "message" : "The quick brown fox jumps over the lazy dog"
+        }
+      }
+
+3-2: "jumping" 으로 찾기
+
+▼ 결과 
+      {
+        "_index" : "my_index2",
+        "_type" : "_doc",
+        "_id" : "1",
+        "_score" : 0.2876821,
+        "_source" : {
+          "message" : "The quick brown fox jumps over the lazy dog"
+        }
+      }
+
+결론: 3-1과 3-2의 결과를 통해 snowball analyzer가 잘 적용된것을 알수있다. 검색할때 알아서 snowball 분석기로 분석을해서 검색을함
+
+
+# analyzer가 적용된 인덱스에서 정확한 Term을 찾기
+
+GET my_index2/_search
+{
+    "query":{
+        "term":{
+            "message":"jump" ->검색할 term
+        }
+    }
+}
+
+▼ 결과
+
+      {
+        "_index" : "my_index2",
+        "_type" : "_doc",
+        "_id" : "1",
+        "_score" : 0.2876821,
+        "_source" : {
+          "message" : "The quick brown fox jumps over the lazy dog"
+        }
+      }
+
+결론: term을 이용해 jumping,jumps로 검색하면 검색이 되지않는다. term은 Elasticsearch에 저장된 term을 찾는것이기때문에, 
+
+도큐먼트 삽입시 입력한 jumps는 이미 snowball 분석기를 통해 원형 jump로 저장이되어있다. 고로 쿼리를 match가아닌 term으로 설정하면 Jump, jumping,jumps로 검색할수없다.
+
+(match는 검색할때 데이터가 분석기를 통해 분석이된채로 들어가기때문에 어떤단어로 찾아도 찾아지는것)
+
+# analyzer 커스텀마이징
+
+예시 인덱스생성)
+
+사용자 정의 analyzer를 만들고 설정한다.
+
+PUT my_index3
+{
+  "settings": { -> 가장 상위 경로 settings/
+    "index": { -> settings/ index 
+      "analysis": { -> settings/ index /사용자 정의 analyzer
+        "analyzer": { ->정의
+          "my_custom_analyzer": { ->  analyzer 이름
+            "type": "custom", -> analyzer 타입
+            "tokenizer": "whitespace", -> 사용자정의 analyzer 토크나이저 종류
+            "filter": [
+              "lowercase", ->적용할 토큰필터1
+              "stop", ->적용할 토큰필터2
+              "snowball" ->적용할 토큰필터3
+            ]
+          }
+        }
+      }
+    }
+  }
+}
+
+예시 도큐먼트 삽입)
+
+GET my_index3/_analyze
+{
+  "analyzer": "my_custom_analyzer", -> 아까 생성한 사용자 정의 분석기이름
+  "text": ["The quick brown fox jumps over the lazy dog"] ->분석할 텍스트
+}
+
+
+▼ 결과
+  "tokens" : [
+    {
+      "token" : "quick",
+      "start_offset" : 4,
+      "end_offset" : 9,
+      "type" : "word",
+      "position" : 1
+    },
+    {
+      "token" : "brown",
+      "start_offset" : 10,
+      "end_offset" : 15,
+      "type" : "word",
+      "position" : 2
+    },
+    {
+      "token" : "fox",
+      "start_offset" : 16,
+      "end_offset" : 19,
+      "type" : "word",
+      "position" : 3
+    }],
+...등등
+
+
+
+# 사용자정의 토큰필터, 토크나이저 과 매핑적용
+
+위에서 생성한 분석기에서 같은 레벨에 생성
+
+PUT my_index3
+{
+  "settings": { -> 가장 상위 경로 settings/
+    "index": { -> settings/ index 
+      "analysis": { -> settings/ index /사용자 정의 analyzer
+        "analyzer": { ->정의
+          "my_custom_analyzer": { ->  analyzer 이름
+            "type": "custom", -> analyzer 타입
+            "tokenizer": "whitespace", -> 사용자정의 analyzer 토크나이저 종류
+            "filter": [
+              "lowercase", ->적용할 토큰필터1
+              "stop", ->적용할 토큰필터2
+              "snowball" ->적용할 토큰필터3
+            ]
+          }
+        },
+        "filter":{ -> analyzer와 같은 레벨에 "filter"라고 입력하면 토큰필터를 의미함
+            "my_stop_filter":{ ->사용자정의 토큰필터 이름
+                "type":"stop", ->토큰필터 종류. stop타입
+                "stopwords":[ ->저장하지않을 단어입력
+                    "brown" ->값. brown을 저장하지않음.
+                ]
+            }
+        }
+      }
+    }
+  },
+    "mappings": { ->매핑에서 아래내용을 인덱스에 적용할것임(위에서진행한 인덱스를 먼저생성하고 도큐먼트를 삽입하는것과 같은 작업, 도큐먼트삽입은 따로)
+    "properties": {
+      "message": { ->인덱스의 메세지필드에
+        "type": "text", ->도큐먼트 타입지정
+        "analyzer": "my_custom_analyzer" ->분석기지정(사용자정의)
+      }
+    }
+  }
+}
+
+예시 도큐먼트 삽입)
+
+PUT my_index3/_doc/1
+{
+  "message": "The quick brown fox jumps over the lazy dog"
+}
+
+검색)
+
+GET my_index3/_search
+{
+  "query": {
+    "match": {
+      "message": "brown"
+    }
+  }
+}
+
+결과 : "The quick brown fox jumps over the lazy dog" 에서 brwon term은 저장되지않아서 찾을수없다.
+
+
+# Termvectors API
+
+term저장정보를 보고싶을때 사용한다.
+
+기본형
+>GET <인덱스>/_termvectors/<도큐먼트id>?fields=<필드명>
+
+입력)
+
+GET my_index3/_termvectors/1?fields=message
+
+▼ 결과
+
+      "terms" : {
+        "dog" : { ->term
+          "term_freq" : 1, ->해당 term이 나온횟수
+          "tokens" : [
+            {
+              "position" : 8, ->dog term의 토큰위치. "The quick brown fox jumps over the lazy dog" 에서 The 부터 0으로 시작함. dog은 8번째
+              "start_offset" : 40, ->앞에서부터 1바이트씩 쪼갰을때의 시작위치
+              "end_offset" : 43 ->start_offset과 같은방식으로 dog가 끝나는 위치
+            }
+          ]
+        },
+        "fox" : {
+          "term_freq" : 1,
+          "tokens" : [
+            {
+              "position" : 3,
+              "start_offset" : 16,
+              "end_offset" : 19
+            }
+          ]
+        }}
+```
+
+## nori 형태소 분석기를 이용해보자
+
+
 
 ## 로그스태시로 csv,jdbc,카프카 등 원하는 자료를 불러와보자
 
