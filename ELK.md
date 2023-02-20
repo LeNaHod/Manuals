@@ -4,6 +4,10 @@ GCP / Window = ELK 7.10.1
 
 VM(Ubunto 20.22) = ELK 7.17.7
 
+★ 해당 문서는 아래 출처의 문서와 강의의 내용을 참고하여 작성되었습니다.
+
+- [Elstic가이드북](https://esbook.kimjmin.net/)
+- [한국 Elstic사용자 그룹 유튜브](https://www.youtube.com/@elastic7014)
 
 # curl설치
 
@@ -1951,10 +1955,513 @@ GET my_index3/_termvectors/1?fields=message
         }}
 ```
 
-## nori 형태소 분석기를 이용해보자
+## Nori 형태소 분석기를 이용해보자
+
+Nori란?
+
+Nori는 한글을 분석하기위해 만들어진 한글 형태소 분석기이다.
+Nori는 기본설치가 아니기때문에, Nori plugin을 다운로드 받아줘야한다.
+
+**엘라스틱서치를 실행중일때 설치해도되지만, 노드를 재시작해줘야한다.**
+또한, 여러개의 노드가있을때, 각 노드마다 설치해주자.
+
+Nori분석기 설치
+
+>elasticsearch/bin/elasticsearch-plugin install analysis-nori
 
 
+Nori는 analyzer와 tokenizer로 이루어져있다.
 
+기존 toenizer, analyzer와 사용하는 방법은 같다.
+
+그중, 사용자정의 사전(user_dictionary_rules)를 조금 알아본다
+
+```bash
+#예시 데이터 생성
+  PUT my_nori
+  {
+    "settings": {
+      "analysis": {
+        "tokenizer": {
+          "my_nori_tokenizer": {
+            "type": "nori_tokenizer",
+            "user_dictionary_rules": [
+              "해물"
+            ]
+          }
+        }
+      }
+    }
+  }
+
+위와같이 저장하고 아래과같이 찾으면
+  GET my_nori/_analyze
+  {
+    "tokenizer": "my_nori_tokenizer",
+    "text": [
+      "동해물과 백두산이"
+    ]
+  }
+
+기본 노리처럼 "동해","물" 두개로 나뉘어서 저장되는게 아닌, "해물"이라는 텀으로 저장된다.
+그래서 기본적으로 저장되는 형태말고 합성어등을 저장해야할때 사용하면좋다.
+
+※ 인덱스는 수정하려고해도 생성한 이후에는 바뀌지 않는 부분이 많기때문에, 실제 데이터를 넣기전에 테스트인덱스를 많이 넣어볼것.
+
+#사용자 정의 토크나이저를 이용해서 Nori 토크나이저의 세가지 옵션의 차이점을 알아본다.
+
+PUT my_nori -> 중복되는 인덱스가있는경우 삭제후 진행
+{
+  "settings": { ->settings하위
+    "analysis": { -> analysis하위
+      "tokenizer": { ->토크나이저를 사용자지정할것임
+        "nori_none": { ->사용자 정의 토크나이저 이름
+          "type": "nori_tokenizer", ->어떤 토크나이저를 사용할건지
+          "decompound_mode": "none" ->해당 토크나이저가 지원하는 모드. nori none모드
+        },
+        "nori_discard": { ->이름
+          "type": "nori_tokenizer",
+          "decompound_mode": "discard" ->nori discard모드
+        },
+        "nori_mixed": { ->이름
+          "type": "nori_tokenizer",
+          "decompound_mode": "mixed" ->nori mixed모드
+        }
+      }
+    }
+  }
+}
+
+#결과
+
+- nori_none: "백두산","이"
+
+- nori_discard: "백두","산","이"
+
+- nori_mixed: "백두산","백두","산","이"
+```
+**Nori 분석기 품사표**
+![Nori토크나이저 품사표](https://1535112035-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-Ln04DaYZaDjdiR_ZsKo%2F-LoinpqY1xA7ock1sc6i%2F-Loioly2sAhomKoXMv2-%2F6.7.2-02.png?alt=media&token=47fae11e-c38e-4dff-92e8-64515e37f565)
+
+```bash
+#Nori의 품사와, 품사제거
+
+위는 Nori분석기의 기본 품사표이다.
+
+nori_part_of_speech를 이용하여 Nori에서 사용자에게 필요하지않은 품사를 지정하여 제거할수있다.
+
+사용방법은 stoptags 값에 배열로 제외할 품사 코드를 나열하면된다.
+
+#stoptags 디폴트값
+
+"stoptags": [
+  "E", "IC", "J", "MAG", "MAJ",
+  "MM", "SP", "SSC", "SSO", "SC",
+  "SE", "XPN", "XSA", "XSN", "XSV",
+  "UNA", "NA", "VSV"
+]
+
+위는 기본적으로 저장되어있는 제외할 품사의 코드이다.
+
+사용자에게 필요한것들로만 stoptags를 편집해서 사용하면된다.
+
+#사용예시
+
+PUT my_nori_fi ->사용자정의 토큰필터
+{
+  "settings": {
+    "index": {
+      "analysis": {
+        "filter": { ->analysis아래에 filter를 추가하겠다
+          "my_nori_f": { -> 필터의 명
+            "type": "nori_part_of_speech",
+            "stoptags": [
+              "NR" ->품사코드 NR을 제거.
+            ]
+          }
+        }
+      }
+    }
+  }
+}
+
+#분석예시
+GET my_nori_fi/_analyze
+{
+  "tokenizer": "nori_tokenizer", ->토크나이저는 nori를사용
+  "filter": [
+    "my_nori_f" ->위에서만든 사용자정의 토큰필터
+  ],
+  "text": "다섯 아이가"
+}
+
+#결과
+
+- my_nori_fi/my_nori_f 필터: "아이", "가"
+
+#저장된 데이터의 품사정보확인하기
+
+Nori를 통하여 이미 저장된 데이터가 어떤품사로 분류되어 저장되어있는지 조회하고싶을때, 사용하는 옵션이있다.
+
+>"explain" : true
+
+explain 옵션의 값을 true로 주게되면, 저장된 데이터의 품사정보를 조회할수있다.
+
+해당옵션을 주고 조회하면 저장된 단어에 아래와같은 항목이품사정보이다.
+"leftPOS" : "품사코드(Ending particle)" 
+"rightPOS" : "품사코드(General Noun)"
+
+
+#한자 -> 한글로 바꾸어 저장
+nori_readingform는 한자어를 한글로 바꿔주는 역할을한다.
+한자로된 데이터나, 한자가 섞여있는 데이터(뉴스나, 외국 기사같은것)을 저장할때 유용할것이라고 생각한다.
+
+
+#한자텍스트 예시
+GET _analyze
+{
+  "tokenizer": "nori_tokenizer",
+  "filter": [
+    "nori_readingform" ->nori에서 기본 제공하는 필터.
+  ],
+  "text": "囊中之錐"
+}
+
+#한자텍스트 결과
+
+{
+  "tokens" : [
+    {
+      "token" : "낭중지추",
+      "start_offset" : 0,
+      "end_offset" : 4,
+      "type" : "word",
+      "position" : 0
+    }
+  ]
+}
+
+위와같이 제대로 번역이된것을볼수있다.
+
+```
+
+## 인덱스 매핑 + 문자열,숫자 데이터타입을 알아보자
+
+인덱스가 생성될때 settings와 mappings정보가 생성된다.
+만약, 인덱스가 생성되지않은 상태로 도큐먼트를 elasticseach에 넣게되면, elasticsearch에서 알아서 mappings,seetings 정보를 생성하여 **자동으로 인덱스를 생성**한다.
+
+이때, **mappings정보는 들어오는 도큐먼트의 정보 타입에따라 알아서 결정된다.**
+
+- settings: 인덱스, 샤드(프라이머리 데이터)갯수, 레플리카 갯수
+- mappings: 저장할 도큐먼트(데이터)의 데이터 타입등, RDB로따지면 스키마이다.
+
+```bash
+#아래와같이 books인덱스가 없는상태로 books인덱스안에 도큐먼트 삽입
+
+PUT books/_doc/1
+{
+  "title": "Romeo and Juliet",
+  "author": "William Shakespeare",
+  "category": "Tragedies",
+  "publish_date": "1562-12-01T00:00:00",
+  "pages": 125
+}
+
+#결과
+
+GET books ->settings정보도 함께출력
+GET books/_mapping ->books인덱스의 mappings정보만 출력
+
+        "author" : { ->위 도큐먼트의 필드이름중하나
+          "type" : "text", ->author의 데이터는 문자열이므로 text와 keyword로 저장
+          "fields" : {
+            "keyword" : {
+              "type" : "keyword",
+              "ignore_above" : 256
+            }
+          }
+        },
+        "category" : {
+          "type" : "text",
+          "fields" : {
+            "keyword" : { ->fields keyword로써, 필드명.keyword 라는 명령문으로도 접근이 가능하다. 단, keyword로 접근할때는 category에 저장된 단어 그대로 입력해야한다.(쪼개서 검색하면 X)
+            ex)GET books/_search "query:"{"math":{"category.keyword":"내용"}}
+              "type" : "keyword",
+              "ignore_above" : 256
+            }
+          }
+        },
+        "pages" : {
+          "type" : "long" ->pages필드는 데이터가 숫자이므로 long으로 지정되었다.
+        },
+        "publish_date" : {
+          "type" : "date" ->publish_date필드는 데이터가 날짜이므로 date로 지정
+        },
+
+자동으로 매핑정보가 인덱스에 들어오는 도큐먼트에따라 지정된다.
+인덱스는 필드를 추가하는것은 가능하지만, 기존에있는 필드를 바꿀수는없다.
+
+# 매핑정보를 지정하여, 인덱스를 미리 생성해놓고 도큐먼트를 넣어보자.
+
+PUT books/_mapping ->생성된 books라는 인덱스에 mapping정보를 바꾼다
+{ 
+  "properties": { ->mappings-properties아래에 필드들이있으니, 지금은 필드를 추가
+    "content":{ ->추가할 필드의 이름
+      "type":"text" ->content필드의 타입
+    }
+  }
+}
+
+#PUT books/_mappings 결과
+
+  "books" : {
+    "mappings" : {
+      "properties" : {
+                "content" : {
+          "type" : "text"
+        },
+                "pages" : {
+          "type" : "long"
+        },
+        "publish_date" : {
+          "type" : "date"
+        },....
+      }
+    }
+  }
+
+원래 없었던 필드인 content가 mappings정보에 지정한대로 생성된것을 확인.
+
+※ Keyword타입과 text타입의 차이점
+- keyword: 입력된 단어를 텀 단위로 쪼개지않고, 한개의 토큰으로 통째로 저장한다. 주로 '집계'를할때 사용된다.
+- text: 텀 단위로 쪼개서 역 인덱스(위 참고)구조를 만들어 저장한다. 풀텍스트 검색에 사용할 문자열 필드를 text타입으로 지정한다.
+
+
+# 매핑정보를 지정하여 인덱스 생성2.
+
+이번엔 필드를보고 하나하나 타입을 지정해본다.
+
+인덱스를 생성할때, 미리 만들어진 비슷한 인덱스가있다면 mappings정보 아래에 properties정보를 복사해와서 PUT할때 이용하면 편하다.
+
+PUT books ->(위에서 생성한 동일한이름의 books는 삭제.)
+{
+      "mappings":{ ->books인덱스를 삭제하여 mappings가없기때문에, properties상위에 mappings를 넣어줘야한다.
+        "properties" : { ->삭제하기 전, books인덱스에 남아있던 properties의 정보를 카피해와서 붙임
+        "author" : {
+          "type" : "text",
+          "fields" : { ->필드는 멀티필드를 줄수있다.(필드를 여러개가질수있다.)
+            "keyword" : { ->이 이름은 변경이가능하다. 하위필드1
+              "type" : "keyword", ->키워드로 집계를해야, 다른 정보에 동일한 텀이있을경우 섞이지않는다. keyword를 text로저장하면 텀단위로 저장하기때문에 집계가 섞임.
+
+              "ignore_above" : 256 ->데이터의 길이가 256자가 넘어가면 저장하지않는다.
+            },
+            "nori_fi":{ ->하위필드2. nori로 분석한내용을 저장하는 용도로 사용할것이다.
+              "type":"text",
+              "analyer":"nori"
+            } ->위와 같이 생성하면 author.nori로 검색하면 nori로 분석한내용을 볼수있다. author.keyword는 기본분석기로 분석된 결과를 볼수있다.
+
+          }
+        },
+        "category" : {
+          "type" : "keyword"
+        },
+        "pages" : {
+          "type" : "long"
+        },
+        "publish_date" : {
+          "type" : "date"
+        },
+        "title" : {
+          "type" : "text"
+        }
+      }
+  }
+}
+
+# 숫자 타입을 알아보자
+
+elasticsearch의 숫자형 데이터 타입은 아래와같다.
+
+long : 64비트 정수 (-9,223,372,036,854,775,808 ~ 9,223,372,036,854,775,807)
+integer : 32비트 정수 (-2147483648 ~ 2147483647)
+short : 16비트 정수 (-32768 ~ 32767)
+byte : 8비트 정수 (-128 ~ 127)
+double : 64비트 실수
+float : 32비트 실수
+half_float : 16비트 실수
+scaled_float : 실수형이지만 부동소수점이 아니라 long 형태로 저장하고 옵션으로 소수점 위치를 지정한다. 통화 (예: $19.99) 같이 소수점 자리가 고정된 값을 표시할 때 유용.
+
+※여기서 주의할점은 "integer"로 저장해도 소수점이 저장이 되는것으로 보이지만, 실제로 elasticsearch에는
+소수점이 저장되지않는다.
+
+#integer타입 소수점실험
+
+#예시 인덱스 생성
+
+PUT integer_test
+{
+  "mappings":{
+    "properties":{
+      "value":{
+        "type": "integer"
+      }
+    }
+  }
+}
+
+#예시 도큐먼트값 넣기
+
+PUT integer_test/_doc/1
+{
+  "value": 1
+
+}
+
+PUT integer_test/_doc/2
+{
+  "value": "234"
+
+}
+
+PUT integer_test/_doc/3
+{
+  "value": 1.5
+
+}
+
+#결과
+
+GET integer_test/_search
+
+    "hits" : [
+      {
+        "_index" : "integer_test",
+        "_type" : "_doc",
+        "_id" : "1",
+        "_score" : 1.0,
+        "_source" : {
+          "value" : 1
+        }
+      },
+      {
+        "_index" : "integer_test",
+        "_type" : "_doc",
+        "_id" : "2",
+        "_score" : 1.0,
+        "_source" : {
+          "value" : "234"
+        }
+      },
+      {
+        "_index" : "integer_test",
+        "_type" : "_doc",
+        "_id" : "3",
+        "_score" : 1.0,
+        "_source" : {
+          "value" : 1.5
+        }}
+
+아직까지는 잘 저장된것처럼 보인다.
+
+#숫자를 찾을때 사용하는 range쿼리를 이용하여 조회
+
+GET integer_test/_search
+{
+  "query": {
+    "range": {
+      "value": {
+        "gt": 0.5, ->0.5보다크고
+        "lt": 1.3 ->1.3보다 작은 숫자를 다찾음
+      }
+    }
+  }
+}
+
+#range쿼리 결과
+
+      {
+        "_index" : "integer_test",
+        "_type" : "_doc",
+        "_id" : "1",
+        "_score" : 1.0,
+        "_source" : {
+          "value" : 1
+        }
+      },
+      {
+        "_index" : "integer_test",
+        "_type" : "_doc",
+        "_id" : "3",
+        "_score" : 1.0,
+        "_source" : {
+          "value" : 1.5
+        }
+      }
+
+의도대로라면 1번아이디의 값인 1만 조회되어야하는데, *1.3이상* 인 3번아이디의 값 *1.5가 같이검색* 되었다.
+왜냐하면 1.5를 표시하기에는 1.5라고 표시하지만, 실제로 내부에 저장되어있는값은 정수형으로 저장이되어있기때문에, 1로 저장되어있다.
+
+#1.1이상의값 찾기 
+GET integer_test/_search
+{
+  "query": {
+    "range": {
+      "value": {
+        "gt": 1.1,
+        "lt": 3 
+      }
+    }
+  }
+}
+
+#결과
+{
+  "took" : 2,
+  "timed_out" : false,
+  "_shards" : {
+    "total" : 1,
+    "successful" : 1,
+    "skipped" : 0,
+    "failed" : 0
+  },
+  "hits" : {
+    "total" : {
+      "value" : 0,
+      "relation" : "eq"
+    },
+    "max_score" : null,
+    "hits" : [ ]
+  }
+}
+
+내부적으로 1이 저장되어있기때문에 위와같이 1이상의것을 찾으면 정상적으로 찾지못하는 결과가나온다.
+
+그래서 소수점이 포함되어있는 데이터를 저장할때는 자동으로 생성되는 mappings을 사용하지말고, 
+
+float,double을 이용하여 mappings정보를 미리 지정하여 인덱스를 생성해놓고 저장을하자.
+
+#잘못된 값을 걸러내는 옵션
+
+PUT integer_test
+{
+  "mappings": {
+    "properties": {
+      "value": {
+        "type": "integer",
+        "coerce": false  ->type에서 지정한 타입이아닌 데이터가들어오면, 받아들이지않는다.
+      }
+    }
+  }
+}
+
+```
+
+-동적(dynamic)매핑
+-정적(PUT)
+
+```bash
+
+```
 ## 로그스태시로 csv,jdbc,카프카 등 원하는 자료를 불러와보자
 
 ### 가져오는방법으로 3가지가있다. 
