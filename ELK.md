@@ -2456,12 +2456,545 @@ PUT integer_test
 
 ```
 
--동적(dynamic)매핑
--정적(PUT)
+## 날짜(Date),시간 타입과 위치정보를 알아보자
+
+날짜 데이터를 도큐먼트에 넣으면, 인덱스에 매핑이 지정되어있지않은경우 자동으로 날짜타입으로 들어가는 경우가있고, text/keyword 타입으로 매핑이 지정되는 경우가있다.
+
+Date타입을 올바르게 입력받을수있도록 날짜형식을 매핑해보자.
+
+아래는 Date타입을 지정할때 format옵션에서 사용하는 날짜표 이다.
+
+![elasticsearch-date표](/elk/elastic-date.PNG)
 
 ```bash
 
+# "2023-01-02 08:20:23" 으로 입력해본다.
+
+PUT my_date/_doc/1
+{
+  "date_val": "2023-01-02 08:20:23"
+}
+
+#결과
+
+GET my_date/_mapping
+
+type : "date" 라고 출력되는것으로보아 data타입으로 매핑이 자동으로 설정되었다.
+
+# "12/Aug/2023:01:02:23" 입력
+
+PUT my_date/_doc/2
+{
+  "date": "12/Aug/2023:01:02:23"
+}
+
+
+#결과
+
+GET my_date/_mapping
+
+type: "text" 
+  "firelds":
+    "keyword":
+      "type": "keyword"
+
+type: text / type:keyword 으로 자동 매핑이 생성된것으로 보아, 문자열로 인식되었다.
+
+# date타입으로 미리 매핑을 지정하여 인덱스를 생성하자
+
+type을 date로 설정할것이지만 format옵션을 같이 사용하여 어떤 형식의 날짜를 date타입으로 받아들일것인지 지정해준다.
+
+PUT my_date ->기존인덱스 삭제하고 진행
+{
+  "mappings":{
+    "properties": {
+      "date": {
+        "type": "date",
+        "format": "dd/MMM/yyyy:HH:mm:ss||iso8601||epoch_millis"
+      }
+    }
+  }
+}
+
+format에 총 3가지의 옵션을 or로 묶어서 추가하였다.
+
+※dd/MMM/yyyy:HH:mm:ss만 쓰면 해당 dateformat만 날짜로 받아들이기때문에 
+OR로 다른dateformat도 날짜로 받아들일수있게 설정하였다.
+
+-iso8601: "2023-01-02T08:20:23" 과 같은 가장 기본적인 형태를 저장
+-epoch_millis: 특정 날짜로부터 특정 단위로 증가하는 숫자를 long타입으로 저장을한다. 하지만 elastic에는 "날짜"로 저장된다. 
+
+
+#epoch_millis 형식의 데이터 추가
+
+PUT my_date/_doc/3
+{
+  "date": 1568332800000
+}
+
+#결과
+
+GET my_date/_mapping
+
+  "my_date" : 
+    "mappings" : 
+      "properties" : 
+        "date" : 
+          "type" : "date",
+          "format" : "dd/MMM/yyyy:HH:mm:ss||iso8601||epoch_millis"
+
+GET my_date/_search/
+      {
+        "_index" : "my_date",
+        "_type" : "_doc",
+        "_id" : "1",
+        "_score" : 1.0,
+        "_source" : {
+          "date" : "2023-01-02T08:20:23"
+        }
+      },
+      {
+        "_index" : "my_date",
+        "_type" : "_doc",
+        "_id" : "2",
+        "_score" : 1.0,
+        "_source" : {
+          "date" : "12/Aug/2023:01:02:23"
+        }
+      },
+      {
+        "_index" : "my_date",
+        "_type" : "_doc",
+        "_id" : "3",
+        "_score" : 1.0,
+        "_source" : {
+          "date" : 1568332800000
+        }
+      }
+정상적으로 매핑정보가 가져와지고, 도큐먼트안에 date타입으로 데이터가 들어갔다.
+epoch_millis는 일반숫자처럼 보이지만, range쿼리를 통하여 날짜로 검색하면 조회가된다.
+
+
+#rnage쿼리로 epoch_millis형식으로 저장된 날짜 검색
+
+GET my_date/_search
+{
+  "query": {
+    "range": {
+      "date": {
+        "gte": "2019-09-01",
+        "lte": "2019-09-20"
+      }
+    }
+  }
+}
+
+#결과
+
+      {
+        "_index" : "my_date",
+        "_type" : "_doc",
+        "_id" : "3",
+        "_score" : 1.0,
+        "_source" : {
+          "date" : 1568332800000
+        }
+      }
+    ]
+  
+# Object,Nested 타입
+
+elastic은 기본적으로 json형태이고, json는 키:밸류로 이루어진 딕셔너리다.
+
+>{키:밸류}
+
+Object는 키가 여러개의 밸류를 가지고있을때 여러개의 밸류값을 Object라고부른다.
+즉 한개의 필드안에 하위필드를 넣는것.
+
+>{키:{키:밸류}...}
+
+# Object를 생성해보자.
+
+PUT movie/_doc/1
+{
+  "characters": { ->캐릭터라는 필드안에
+    "name": "Iron Man", 
+    "age": 46, 
+    "side": "superhero" -> name,age,side라는 하위 필드들을 생성한다.
+  }
+}
+
+★ elasticsearch에서는 "필드 타입의 값이 일치하는 경우"에는 배열 타입을 따로 선언하지않고도,
+배열로 값을 넣을수있다. 값을 단일 값으로 넣어도되고, 배열로 넣어도된다.
+
+필드 타입의 값이 일치하는경우
+
+>EX) {키: 밸류} ->O
+>EX2) {키: [밸류1,밸류2,...]} ->O
+
+#결과
+
+GET movie/_mapping
+
+{
+  "movie" : {
+    "mappings" : {
+      "properties" : {
+        "characters" : { 
+          "properties" : { ->하위필드가 존재하지 않을시, 이부분은 바로 "type":"데이터타입"이 오는데, 하위필드가 존재하여,
+          properties가 다시 나왔다.
+            "age" : { -> properties아래에 하위 필드들이 나온다.
+              "type" : "byte"
+            },
+            "name" : {
+              "type" : "text"
+            },
+            "side" : {
+              "type" : "keyword"
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+만약 name아래에 또 다른 하위필드가 존재할시,
+name 아래에 properties가 한번 더 나오고, name안에있는 하위필드들이 정보가나온다.
+
+# 결과2 (필드.하위필드 형식으로 조회하기)
+
+GET movie/_search
+{
+  "query": {
+    "match" {
+      "characters.name": "Iron Man" ->상위필드.하위필드 키: 값
+    }
+  }
+}
+
+#Nested 타입
+
+Nested타입은 Object타입에서 더 세분화시켜 검색하기위해 사용한다.
+Object타입에서 역 색인 구조를 갖추게해주는게 Nested타입이다.
+
+
+#Nested타입 매핑 지정방법
+
+>type:nested
+
+매핑에서 type만 nested로 바꿔주고, 나머지는 Object타입에서 지정하는것과 같다.
+
+#Nested타입 조회방법
+
+GET movie/_search
+{
+  "query": {
+    "nested": { ->★
+      "path": "characters",
+      "query": {
+        "bool": {
+          "must": [
+            {
+              "match": {
+                "characters.name": "Loki"
+                }
+            },
+            {
+              "match": {
+                "characters.side": "villain"
+              }
+            }
+              }
+            }
+          ]
+        }
+      }
+    }
+
+characters object들은 Nested라는 별도의 영역에 별도로 저장이된다.
+그래서 조회 쿼리문을 작성할때 "nested"를 넣어주고, path에 필드이름을 상위필드이름을 적어준다.
 ```
+### Nested와 Object의 구조
+
+![Nested와Object구조](https://1535112035-files.gitbook.io/~/files/v0/b/gitbook-legacy-files/o/assets%2F-Ln04DaYZaDjdiR_ZsKo%2F-LpGYSs0zuXyA9FUFgn2%2F-LpGYVcM11V3j4-kGl7O%2F07-02.png?alt=media&token=d5e3f05b-9fea-404c-976f-d2d1b4ace1ab)
+
+
+### Geo데이터 타입
+
+위치정보를 저장하고 검색하기위해, Elasticsearch는 Geo Point / Geo Shape 타입을 지원한다.
+
+Geo Point
+
+두개의 값을 가진 1차원 데이터 점
+
+- 위도(latitude)
+- 경도(longitude)
+
+
+Geo Shape
+
+2차원 값을 저장할수있다.
+
+- 선
+- 면
+
+```bash
+
+# Geo Point
+
+Geo Point타입을 사용할때는 반드시 미리 매핑을 선언을하고 사용해야한다.
+
+>type:geo_point
+
+아래 어떤 방식으로 입력해도 저장가능
+
+##Object형식
+
+PUT my_locations/_doc/1
+{
+  "location": {
+    "lat": 41.12,
+    "lon": -71.34
+  }
+}
+
+##Text형식
+PUT my_index/_doc/2
+{
+  "location": "41.12,-71.34"
+}
+
+##GeoHash형식
+
+GeoHash는 전세계 지도를 바둑판 모양으로 격자로 나누어 각 칸마다 숫자와 알파벳 기호로 표시하여 알파벳을 증가시키는 형식이다. 자릿수가 커질수록 정밀도가 높아지고, 1자리값이면 대륙, 2자리값이면 한국영토크기. 4자리값이면 대도시이다.
+
+
+PUT my_index/_doc/3
+{
+  "location": "drm3btev3e86"
+}
+
+##실수배열 형식
+PUT my_index/_doc/4
+{
+  "location": [
+    -71.34,
+    41.12
+  ]
+}
+
+#예시 데이터 생성
+
+bulk기능으로 4개의 예시 도큐먼트를 my_geo라는 인덱스에 넣어줌
+
+PUT my_geo/_bulk
+{"index":{"_id":"1"}}
+{"station":"강남","location":{"lon":127.027926,"lat":37.497175},"line":"2호선"}
+{"index":{"_id":"2"}}
+{"station":"종로3가","location":{"lon":126.991806,"lat":37.571607},"line":"3호선"}
+{"index":{"_id":"3"}}
+{"station":"여의도","location":{"lon":126.924191,"lat":37.521624},"line":"5호선"}
+{"index":{"_id":"4"}}
+{"station":"서울역","location":{"lon":126.972559,"lat":37.554648},"line":"1호선"}
+
+#위치정보 쿼리문
+
+GEO데이터를 검색할때 사용할수있는 쿼리가 두가지있다.
+
+1.geo_bounding_box: 찾으려는 영역을 박스로 그려, 박스영역안에 포함되어있는 도큐먼트를찾는다.
+
+ex) 서울역 - 종로3가 까지 포함하는 영역박스를 위도,경도로 지정하여 검색하면 서울역 - 종로3가 사이에있는 도큐먼트 출력
+
+2.geo_distance: bounding_box는 말그대로 네모이고, 이건 지정한 반경의 원안에있는 도큐먼트를 찾는다.
+geo_bounding_box와 다르게 점을 하나만준다.
+
+#Geo_bounding_box
+GET my_geo/_search
+{
+  "query": {
+    "geo_bounding_box": { ->box모양으로 찾으려는 영역을 그릴것
+      "location": {
+        "bottom_right": { ->box영역이 끝날곳
+          "lat": 37.4899, ->y(위도)
+          "lon": 127.0388 ->x(경도)
+        },
+        "top_left": { ->box 영역이 시작할곳
+          "lat": 37.5779,
+          "lon": 126.9617
+        }
+      }
+    }
+  }
+}
+
+#Geo_distance로 찾기
+
+GET my_geo/_search
+{
+  "query": {
+    "geo_distance": {
+      "distance": "5km", ->중심점에서 찾을 반경지정
+      "location": { -> 원의 중심이되는 점의 위도,경도 하나만 준다.
+        "lat": 37.5358,
+        "lon": 126.9559
+      }
+    }
+  }
+}
+
+#Geo Shape
+Geo Point와 다르게, 영역을 저장할수있다.
+Geo Shape를 통하여 국토면적을 그려 저장하여, 쿼리문으로 그려놓은 국토영역안에 포함되어있는 도큐먼트를 알수있다.
+
+# 예시 Box를 영역을 저장한다.
+
+PUT my_shape/_doc/7
+{
+  "location": {
+    "type": "envelope", ->직사각형을 그리는데, 좌측상단,우측하단만 사용하는 타입
+    "coordinates": [
+      [ 126.936893, 37.555134 ],
+      [ 127.004943, 37.50481 ]
+    ]
+  }
+}
+```
+
+[Geo Shape쿼리확인](https://esbook.kimjmin.net/07-settings-and-mappings/7.2-mappings/7.2.6-geo#geo-shape)
+
+
+## GCP에서 Logstash사용하기
+
+### Logstash?
+
+ELK에서 수집기 역할을 담당하고있으며, 수집기로는 Logstash와 Bits가있다.
+
+- Bits: 수집기역할을하지만, Logstash보다 수집한 데이터를 가공하는데 제한이있다. 대신 Logstash보다 데이터를 가볍고 빠르게 수집할수있다.
+- Logstash: 로그,데이터수집기이다. 자동화도 가능하며 수집된 데이터를 가공하는데 Bits보다 뛰어나다.
+주로 데이터 파이프라인을 제어하고, 구축하는데 사용한다.
+
+Logstash는 Elasticsearch뿐만아니라 다른곳으로도 수집하고 가공한 데이터를 전송할수있다.
+Logstash의 기본적인 구조는 크게 세가지이다.
+
+InPut: 로그스태시가 데이터를 수집할곳
+
+Filter: 수집한 데이터를 가공할 필터지정
+
+OutPut: 가공한 or 수집한 데이터를 로그스태시가 어디로 보낼것인지 설정
+
+### 로그스태시 실행
+
+
+    1.-e옵션을 사용하여 명령문에서 바로 파이프라인을 작성해주는것
+
+    bin/logstash -e '
+    > input { stdin { } }
+    > output { stdout { } }'
+
+    successfully started Logstash API endpoint가 뜨면 제대로 실행된것이다.
+
+    아무문자나 입력하고, 입력한 문자가 "message"필드안에 입력되어있으면 된다.
+
+    2. .conf파일을 만들어서 -f옵션을 이용하여 실행시키는 방법.
+
+    vscode나, 아무편집기를 열어 파이프라인을 작성하고 확장자를 .conf로 저장한다.
+
+    bin/logstash -f 파일명.conf
+
+    successfully started Logstash API가 뜨고, conf파일안에 작성한 파이프라인대로 작동하면 성공이다.
+
+
+### 로그스태시의 Input을 TCP로 설정해보자
+
+로그스태시에서 Input으로 가져올수있는 플러그인이 굉장히 많다. 그중 테스트용으로 9900번포트에서
+데이터를 가져와본다.
+
+[로그스태시Inputplugins](https://www.elastic.co/guide/en/logstash/7.11/index.html)
+
+```bash
+#work.conf
+
+input {
+  tcp{
+    port => 9900
+  }
+}
+
+output {
+  stdout{ }
+}
+
+>bin/logstash -f work.conf파일경로
+
+# 다른 터미널에서 logstash가 실행중인 서버의 9900번포트로 텍스트데이터를 보냄
+echo 'hi logstash' | nc localhost 9900
+
+#결과
+
+[2023-02-21T17:37:24,510][INFO ][logstash.agent           ] Successfully started Logstash API endpoint {:port=>9600}
+{
+      "@version" => "1",
+          "host" => "localhost",
+          "port" => 52358,
+       "message" => "hi logstash",
+    "@timestamp" => 2023-02-21T17:39:04.240Z
+}
+
+#input은 tcp로 output을 elasticsearch로보내보자
+
+#work.conf
+
+input {
+  tcp{
+    port => 9900
+  }
+}
+
+output {
+  elasticsearch {
+    hosts =>["엘라스틱서치에 접속할수있는 외부IP(GCP)"]
+    user => "유저id" #(아이디,패스워드를 등록해놨기때문에 없는경우 생략가능)
+    password => "설정한 패스워드"
+  }
+}
+
+
+#Tcp테스트와 동일하게 다른 터미널에서 9900번포트로 텍스트데이터 전송
+
+> echo 'hi logstash' | nc localhost 9900
+
+위와 같이 입력하면 로그스태시가 실행중인 터미널에서는 아무런 반응이없지만, Kibana가 실행중이라면,
+Kibaba의 Dev Tools를 통하여 확인할수있다.
+
+#Kibana에서 결과 확인
+
+> GET _cat/indices
+
+위의 명령어를 입력하면, 모든인덱스를 조회할수있다. 그중 아래와같이 logstash-오늘날짜 이름을 가지고있는게 있으면 잘 실행되고있는것.
+
+green open logstash-2023.02.21-000001   ...
+
+#logstash인덱스 세부사항보기
+
+> GET logstash-*/_search
+
+#결과
+
+        "_index" : "logstash-2023.02.21-000001",
+        "_type" : "_doc",
+        "_id" : "bZkudYYBKM1RDfnmb5Qy",
+        "_score" : 1.0,
+        "_source" : {
+          "port" : 42198,
+          "@timestamp" : "2023-02-21T18:13:42.615Z",
+          "message" : "hi logstash!",
+          "host" : "localhost",
+          "@version" : "1"
+        
+        }
+```
+
 ## 로그스태시로 csv,jdbc,카프카 등 원하는 자료를 불러와보자
 
 ### 가져오는방법으로 3가지가있다. 
@@ -2624,19 +3157,7 @@ output {
 >curl --location --request DELETE "localhost:9200/mysqltest_1"
 
 
-## 엘라스틱서치 환경설정
-  elasticsearch -> config -> jvm.options
-
-JVM heap size 설정가능. 기본적으로 1g로되어있으며, 데이터가 커지면 높여줘야한다. 30g이하로만 설정하길권장
-
-    -Xms1g
-    -Xmx1g
-
-위의 두 값은 늘 같게써주는것이 좋음
-
 ## Kibna로 CSV파일 가져오기
-
-## Mysql의 데이터를 엘라스틱 서치에 적재하기
 
 ## 엘라스틱 서치에 적재된 데이터를 Kibna와 Nori를이용하여 시각화하기
 
