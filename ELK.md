@@ -2995,6 +2995,341 @@ green open logstash-2023.02.21-000001   ...
         }
 ```
 
+## _reindex(인덱스 재색인), 필드 매핑개선을 해보자
+
+이미 엘라스틱에 저장되어있는 데이터를 새 인덱스에 매핑을 만들어 재색인을 해보자.
+
+- 새로만든 인덱스 매핑: 필드 수정, 설정, 삭제 모두가능
+- 만들어진 인덱스 매핑: 필드 추가만 가능. 필드삭제, 필드 세부사항 수정 설정 불가능
+
+만들어져있는 인덱스 매핑같은경우는 위과같이 필드의 추가만 가능하다는점을 유의하자.
+
+```bash
+
+#1.재색인을할 인덱스를 지정하고 고친다.
+
+이미 만들어진 필드의 매핑타입과 설정등을 고칠수있고 필드를 추가하는것이가능하다.
+
+# Befor_index 매핑정보
+{
+  "mappings": {
+    "properties": {
+      "@timestamp": {
+        "type": "date"
+      },
+      "auth": {
+        "type": "keyword"
+      },
+      "bytes": {
+        "type": "long"
+      },
+      "geoip": {
+        "properties": {
+          "location": {
+            "properties": {
+            "lat": {
+              "type": "float"
+            },
+            "lon": {
+              "type": "float"
+            }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+
+#After Index 매핑정보
+
+PUT After_Index
+{
+  "mappings": {
+    "properties": {
+      "@timestamp": {
+        "type": "date"
+      },
+      "auth": {
+        "type": "keyword"
+      },
+      "bytes": {
+        "type": "integer"
+      },
+      "geoip": {
+        "properties": {
+          "location": {
+            "type": "geo_point"
+              "properties": {
+              "lat": {
+                "type": "half_float"
+              },
+              "lon": {
+                "type": "half_float"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+인덱스를수정한다음, 실행시켜서 인덱스를 생성시킴
+
+#2.수정한내용으로 생성한 인덱스에 기존인덱스를 재색인하자
+
+POST _reindex
+{
+  "source": {
+    "index": "befor_index" #기존의 인덱스
+  },
+  "dest": { #목적지개념.
+    "index": "After_Index" #아까 수정하여 재생성한 인덱스
+  }
+}
+
+실행버튼을 눌러서 오류가생기지않으면 성공.
+
+이것은 단일 인덱스에 적용시키는 방법이고, 다수의 인덱스의 매핑정보를 정형화시키려면 Template을 사용한다.
+```
+
+## 스크립트를 사용해보자
+
+Template은 지정한 패턴을가진 인덱스가 Template의 구조를 따르게한다.
+
+스크립트는 _reindex Api와 같이사용한다.
+
+[ElasticSearch공식_DOC](https://www.elastic.co/guide/en/elasticsearch/reference/7.10/docs-reindex.html)
+
+```bash
+
+# Script사용
+
+POST _reindex
+{
+  "source": {
+    "index": "Befor_index-*" #Befor_index로 시작하는 인덱스명 모두 가져오기
+  },
+  "dest": {
+    "index": "After_index" #목적 인덱스
+  },
+  "script": {
+    "lang": "painless", #사용할 스크립트명
+    "source": "ctx._index = 'After_index-' + (ctx._index.substring('Befor_index-'.length(), ctx._index.length()))" 
+  }
+}
+
+
+script 하위의 source문에 대한 간략한 설명
+
+간단하게말하면 dest(목적지)인덱스 이름 뒤에 기존인덱스 이름 뒤에 넘버링 문자를 떼서 목적지 인덱스이름 뒤에 붙여준다는의미이다. 
+
+위의 코드에서는 "Befor_index-2023-01-01" 이라는 인덱스가있다면, script문안의 source에서 substring등을 이용하여 "After_index-2023-01-01" 라는 이름의 재색인 인덱스를 만들어주는것.
+
+- ctx._index: 인덱스에 접근할 명령어같은것. = 이후에 목적으로하는 인덱스명을 넣어준다.
+
+
+#확인
+
+GET _cat/indices/After_index*
+
+#결과
+
+green    open   After_index-2023-01-01 ...
+
+
+# _reindex와 script를 이용해서 특정 필드를 없애고 데이터를 넣어보자
+
+기본형태
+
+> _ingest/pipeline/만들고싶은 인덱스명,필요한인덱스명
+
+
+PUT _ingest/pipeline/my_delete_pipeline
+{
+  "processors" : [ # 필드들을 아래처럼 오브젝트형태의 배열로 넣어주면된다.
+    {
+      "remove" : {
+        "field": ["bytes","@timestamp"]
+        "value": "bar"
+      }
+    }
+  ]
+}
+
+실행시켜서 my_delete_pipeline를 생성시켜주면 사용할수있다.
+
+# _reindex에 생성한 pipeline을 적용
+
+POST _reindex
+{
+  "source": {
+    "index": "Befor_index-*" #Befor_index로 시작하는 인덱스명 모두 가져오기
+  },
+  "dest": {
+    "index": "After_index", #목적 인덱스
+    "pipeline": "my_delete_pipeline"
+{
+  },
+  "script": {
+    "lang": "painless", #사용할 스크립트명
+    "source": "ctx._index = 'After_index-' + (ctx._index.substring('Befor_index-'.length(), ctx._index.length()))" 
+  }
+}
+}
+
+# 결과
+
+green open Afer_index-2023-01-01 9kko56aqRsaUDqksA  1 1 9412  0...
+green open Afer_index-2023-01-02 mF6pQpwsVa5PGatMg  1 1 13545  0...
+
+결론
+
+Befor_index-2023-01-01 , Befor_index-2023-01-02... 이름을 가진 인덱스들이 생성된 pipline을따라
+데이터가 삭제,가공되고, Template을따라, After_index-2023-01-01, After_index_2023-01-02...이름으로 재색인된 인덱스가 생성된다.
+
+```
+## 로그스태시로가져온 Mysql데이터를 Nori로 분석하는 탬플릿생성
+
+**Nori를 사용하기위해서는 Nori토크나이저를 사용하는 인덱스를 미리 생성하고 사용해야한다.**
+
+하지만 로그스태시에서 데이터를 가져올때마다 Nori를 사용하는 인덱스를 매번만들기 귀찮다.
+
+그래서 탬플릿을 이용하여 지정한 인덱스명을 가진 인덱스는 만들어놓은 nori탬플릿의 형식을 따르도록 만든다.
+
+```bash
+
+일단 Mysql에 저장되어있는 데이터를 가져오는 conf파일을 작성한다.
+
+# newtest.conf (.conf파일명)
+
+  input {
+      jdbc{
+          jdbc_driver_library => "/usr/share/java/mysql-connector-j-8.0.32.jar"
+          jdbc_driver_class=> "com.mysql.jdbc.Driver"
+          jdbc_connection_string => "jdbc:mysql://ip:port/dbname"
+          jdbc_user => "user_name"
+          jdbc_password => "password"
+          schedule => "* * * * *"
+          statement => "SELECT * FROM tablename"
+      }
+  }
+
+  filter{
+      mutate {
+          remove_field => ["@version"] # elastic에저장할때 제외할 필드
+      }
+
+  }
+
+  output {
+      elasticsearch{
+          hosts => ["GCP외부IP"]
+          user => "엘라스틱서치Id"
+          password => "엘라스틱서치Password"
+          index => "생성할인덱스명"
+          document_id => "%{id}" #데이터가 중복으로쌓이는것을막음. 단,mysql에서 가져올 테이블의 id컬럼이 id가아닌 pkid, msg_id 이라면 해당 컬럼네임에맞춰 바꿔줘야한다.아니면 계속 덮어씌워져서 한개의 데이터만 저장된다. ex)"%{msg_id}" / "%{pkid}"
+      }
+
+  }
+
+```
+
+### Nori를 적용시키는 Template를 만들어보자
+
+```bash
+
+PUT _template/noritemplate #7.11버전이상부터는 _index_template 로 API이름이 바뀌었다.(나는 7.10버전이라 아직 _template이다.) _templateAPI/TemplateName 구조.
+{
+"index_patterns" : [ #적용받을 인덱스명의 패턴지정
+      "nori_*"  #nori_~ 로 시작하는 파일을은 모두 해당 탬플릿구조를따른다.
+    ],
+    "order": 1,
+    "settings": { #탬플릿구조를 설정하는부분
+		"number_of_shards": 1,
+		"number_of_replicas": 1,
+		"index":{
+			"analysis":{ 
+				"tokenizer":{ #★우리가 사용하려는, Nori 토크나이저를 설정하는부분!
+					"nori_mixed":{ #nori_mixed라는 이름으로 커스텀 토크나이저 설정.
+						"type":"nori_tokenizer", # nori 토크나이저 지정
+						"decompound_mode":"mixed" #nori가 지원하는 3가지 모드중에 mixed를 사용한다.
+					}
+				},
+				"analyzer":{
+					"nori_a":{ #분석기이름
+						"type":"custom", #사용자지정 분석기를사용할것
+						"tokenizer":"nori_mixed" #위에서 만든 Nori토크나이저 사용
+					}
+				}	
+			}	
+		}
+    },
+   "mappings": {  #가져오려는 데이터에대한 필드매핑 설정 부분. 나는 mysql에서 id,title,main,date컬럼을 가져올것이여서 가져올 데이터들이 엘라스틱에 저장될 필드를 지정한다.
+      "properties": {
+        "id": {
+          "type": "integer"
+        },
+        "title": {
+          "type": "text",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 256
+            }
+          }
+        },
+        "main": {
+          "type": "text",
+					"analyzer":"nori_a"
+        },
+        "write_date": {
+          "type": "date",
+          "format": "yyyy.MM.dd.HH:mm||iso8601"
+        }
+      }
+    }
+  }
+
+```
+
+### Template 적용 확인
+newtest.conf를 실행시켜, Logstash로 Mysql에서 원하는 데이터를 가져와서 nori_2라는 이름을 가진 인덱스생성.
+```bash
+#logstash 실행문
+>bin/logstash -f .conf파일 경로
+```
+![logstash_mysql_input](./elk/logstash_mysql_input.PNG)
+
+conf파일의 input내용대로 지정한 테이블을 조회해온다.
+
+```bash
+#확인
+GET nori_2/_settings
+```
+![logstash_template](./elk/logstash_template_search.PNG)
+
+탬플릿을 "nori_"로 시작하는 모든 인덱스에 적용하기로 설정하였으니
+
+nori_2라는 인덱스에 제대로 nori토크나이저가 setting 되어있는것을 확인할수있다.
+
+
+```bash
+
+#nori 작동확인
+
+GET nori_2/_analyze
+{
+  "analyzer": "nori_a",
+  "text": "동해물과 백두산이 마르고"
+}
+```
+![logstash_template_test](./elk/logstash_template_test.PNG)
+
+## + Window환경의 elk
+
 ## 로그스태시로 csv,jdbc,카프카 등 원하는 자료를 불러와보자
 
 ### 가져오는방법으로 3가지가있다. 
@@ -3035,11 +3370,9 @@ output {
 }
 
 ```
-
-confing파일을 실행해보자.(window기준)
+**confing파일을 실행해보자.**
 logstash파일이들어있는 경로로가서 아래 명령문 입력
 >logstash가깔려있는경로>.\bin\logstash.bat -f \config\읽어들일 conf파일이름
-
 
 
 **여기서 -f**는 옵션으로, 파일을 읽겠다는 의미의 옵션이다.
@@ -3099,8 +3432,8 @@ input {
         jdbc_connection_string => "jdbc:mysql://ip:port/db명"
         jdbc_user => "user명"
         jdbc_password =>"mysqlpassword"
-        schedule => "* * * * *" #아래 sql문을 실행할주기
-        statement => "실행할 쿼리문" #위의 db에서 가져올정보
+        schedule => "* * * * *" 
+        statement => "실행할 쿼리문"
     }
 }
 
@@ -3112,11 +3445,11 @@ filter{
 
 output {
     elasticsearch{
-        hosts => ["localhost:9200"] #이벤트를 전송할 엘라스틱서치 주소:포트
-        index => "mysqltest_1" #이벤트를 인덱싱할 대상 인덱스,해당이름이없으면 인덱스를생성하는것같음
-        #document_id =>"%{id}" 저장할 도큐먼트 아이디 지정
+        hosts => ["localhost:9200"]
+        index => "mysqltest_1"
+        #document_id =>"%{id}" 저장할 도큐먼트 아이디 지정. 해당옵션이없으면 데이터 중복생성이됨.
     }
-    stdout{}
+    stdout{} #테스트용. 없어도 실행하는데는 상관없음.
     
 }
 ```
@@ -3126,7 +3459,7 @@ output {
 
 ```python
 input {
-  # Elasticsearch의 모든 문서를 읽습니다. 
+  # Elasticsearch의 모든 문서를 읽음
   elasticsearch {
     hosts => "localhost:9200"
     index => "mysqltest_1"
@@ -3140,7 +3473,7 @@ filter {
         method => "SHA256"
         source => ["id", "title", "main","writedate","url","press"] #이곳에 작성된 필드들의 값이 동일하면 삭제
         target => "[@metadata][generated_id]"
-        concatenate_sources => true # <-- 원래 게시 날짜 이후에 새로운 줄이 추가되었습니다.
+        concatenate_sources => true 
     }
 }
 output {
@@ -3156,10 +3489,11 @@ output {
 
 >curl --location --request DELETE "localhost:9200/mysqltest_1"
 
+## Kibana로 CSV파일 가져오기
 
-## Kibna로 CSV파일 가져오기
+## Kibana 인덱스 패턴생성
 
-## 엘라스틱 서치에 적재된 데이터를 Kibna와 Nori를이용하여 시각화하기
+
 
 
 
