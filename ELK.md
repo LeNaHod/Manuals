@@ -229,8 +229,8 @@ Git bash를 실행시키고 ll(소문자L)명령어로 해당파일의 권한을
 # elk 기본조작
 
 >server에서 elk의 기본적인 설치화 실행방법, 설정을 다뤄봤으니 이제 elk를 조작하여 원하는 결과를얻어보자.
->나는 news와 실시간 트위터데이터(카프카이용)를 받아와, nori토크나이저로 형태소를 분석하고 키워드를 도출하여
->키바나로 어떤 데이터들이들어있는지 보여주고, 워드클라우드로 표현하는것이 최종 목표이다.
+>나는 news와 실시간 트위터데이터(카프카이용)를 받아와, nori토크나이저를 이용하여 저장한다.
+>키바나로 뉴스기사에대하여 간략한 데이터마켓을 구축하는것이 목표이다.
 
 
 ## 엘라스틱 서치를 외부에서도 접속할수있게 해보자.
@@ -3275,7 +3275,7 @@ PUT _template/noritemplate #7.11버전이상부터는 _index_template 로 API이
         "title": {
           "type": "text",
           "fields": {
-            "keyword": {
+            "title_keyword": {
               "type": "keyword",
               "ignore_above": 256
             }
@@ -3283,11 +3283,16 @@ PUT _template/noritemplate #7.11버전이상부터는 _index_template 로 API이
         },
         "main": {
           "type": "text",
-					"analyzer":"nori_a"
+					"analyzer":"nori_a",
+          "fields": {
+            "main_keyword": {
+              "type":"keyword"
+            }
+          }
         },
         "write_date": {
           "type": "date",
-          "format": "yyyy.MM.dd.HH:mm||iso8601"
+          "format": "yyyy.MM.dd HH:mm||iso8601||yyyy.MM.dd||yyyy-MM-dd HH:mm"
         }
       }
     }
@@ -3328,6 +3333,25 @@ GET nori_2/_analyze
 ```
 ![logstash_template_test](./elk/logstash_template_test.PNG)
 
+```bash
+
+#nori_2 인덱스에 스타벅스에대한 기사가존재할때 쿼리문을 통해 제대로 결과를 가져오는지 확인
+
+#쿼리문
+
+GET nori_2/_search
+{
+  "query": {
+    "match": {
+      "main": "스타벅스"
+    }
+  }
+}
+```
+
+![nori_2_스타벅스검색](./elk/kibana_nori_template_search.PNG)
+
+----------
 ## + Window환경의 elk
 
 ## 로그스태시로 csv,jdbc,카프카 등 원하는 자료를 불러와보자
@@ -3489,9 +3513,216 @@ output {
 
 >curl --location --request DELETE "localhost:9200/mysqltest_1"
 
+---------
+
 ## Kibana로 CSV파일 가져오기
 
+---------
+
 ## Kibana 인덱스 패턴생성
+
+Kibana를 처음 실행하면 Elasticsearch에 데이터가있어도, Kibana에서 볼수있는 또하나의 View를 생성해줘야 데이터를 볼수있다. Kibana인덱스 패턴을 기반으로 Kibana는 시각화자료를 만들기때문에, 인덱스패턴을 생성해줘야한다.
+
+두가지 방법이있다.
+
+- Kibana 왼쪽 메뉴의 Kibana > Dashboard 에 들어가서 Create Index pattern 버튼 클릭
+- Kibana 왼쪽 메뉴의 Stack Management > Kibana메뉴 > Indext Patterns > Create Index pattern
+
+키바나 인덱스패턴을 생성 시,
+>my-index  
+>my_index-*
+
+my_index로 시작하는 인덱스들을 모두 묶거나, 단일지정을 할수있다.
+
+
+Next버튼을 눌러 다음으로 넘어가면 **날짜필드**하나를 선택해줘야한다.
+
+**Kibana는** 시계열 데이터를 가정하고 생성하기때문에 **기준이될 날짜필드를 지정**을 해줘야한다.
+
+나는 테스트용 nori_1인덱스의  write_date를 기준으로 선택했다.
+
+이후 왼쪽 메뉴의 **Discover**에 들어가서 해당 인덱스의 기준이되는 날짜를 포함하는 날짜로 바꾸어주면 정상적으로 조회가된다.
+
+- 상단의 서치바를 통하여 필드:조건 and 필드:조건 and 을 입력하여, 원하는 데이터만
+필터링 할수있다. 
+
+- Add filter 기능도 서치바와 같은 기능을한다. 그 중 exclude result 기능은 선택된 조건에 반대가되는 결과를 반환하는 기능이다. 
+
+아래는 간략하게 인덱스패턴을 생성하여 조회해본결과이다.
+
+![키바나인덱스패턴생성,조회](./elk/Kibana_index_pattern.PNG)
+
+-----------
+
+## Kibana 대시보드 생성
+
+Kibana에서 대시보드를 생성하려면 패널을 추가해야한다.
+패널을 추가하는 작업을 visualization이라고 하는데 이것도 추가하는 방법이 두가지있다.
+
+- Kibana 왼쪽 메뉴 > Dashboard > Create New Dashboard >Create New > visualization추가
+- Kibana 왼쪽 메뉴 > Create New visualization 
+
+Dashboard에서 visualization을 추가하는 방법을 해보자
+
+```bash
+
+# 매트릭 Dashboard 생성
+
+매트릭은 기본적으로 도큐먼트의 Count값을 가져온다.
+
+또한 집계할 필드를 선택할수있는데, 숫자필드인경우 평균,최대값,최소값,랭크 등을 선택할수있다.
+
+```
+
+![Kibana_Dashboard_1](./elk/Kibana_Metrics.PNG)
+
+나는 id필드를 기준으로 유니크 카운트를 집계해보았다.
+
+이후 Save를 눌러 visualization을 저장하고 나와서 Dashboard에서 다시 저장할수있다.
+
+![Kibana_Dashboard_2](./elk/Kibana_dashboard.PNG)
+
+위는 Dashboard가 이미 저장된 모습이다.
+
+더 많은 패널을 추가하고싶으면 Edit를 누르고 Create New 버튼을 눌러서 새로운 visualization을 추가한다.
+
+Lens메뉴는 x,y축을 지정하거나 필요한 정보들로만 대시보드를 구성하기 쉽게 도와주는 패널이다.
+
+Lens를 통하여 일단 연습삼아 뭔가를 만들어보았다.
+
+
+![Dashboard_3](./elk/Kibana_Dashboard_2.PNG)
+
+GroupBy를 클릭하여 Top Value의 수를 조절할수있다.
+
+![Dashboard_4](./elk/Kibana_Dashboard_3.PNG)
+
+Top Value의갯수말고도 소수점이나 오름/내림차순 조절이 가능하다.
+
+![Dashboard_5](./elk/Kibana_Dashboard_4.PNG)
+
+롤오버를하면 정보가 나타난다
+
+![Dashboard_6](./elk/Kibana_Dashboard_5.PNG)
+
+-----------
+
+## Kibana로 뉴스기사 대시보드 만들기
+
+파이썬으로 수집한 동물복지 News기사에서 제목을 워드클라우드로 생성
+
+![Kibana_Title_Wordcloud](./elk/Kibana_wordcloud.PNG)
+
+
+``` bash
+Aggregation: Terms
+
+Field: title.title_keyword
+
+Order by: Metric: Count
+
+Order: Descending / Size: 15
+
+```
+
+
+TSVB로 날짜별 News기사 갯수 
+
+![Kibana_Write_date_TSVB](./elk/Kibana_TSVB.PNG)
+
+
+```bash
+
+Aggregation: Count / By: write_date
+
+Top: 30 / Order By: Count / Direction: Desecnding
+
+Show legend: No
+
+```
+
+TreeMap으로 title의 비중
+
+![Kiban_TreeMap](./elk/Kibana_Tree_Map.PNG)
+
+
+```bash
+Group by configuration
+
+Top Values: title.title_keyword
+
+Order by: Count of records
+
+Order direction: Descending
+```
+
+DataTabel로 날짜별 기사제목과 내용을 간략하게 조회
+
+![Kibana_DataTable](./elk/Kibana_DataTable.PNG)
+
+
+```bash
+#두개의 Metric 사용
+
+#Metric 1
+
+Aggreation: Top Hit
+
+Field: title
+
+Aggreate with: Concatenate / Size: 1
+
+Sort on: write_date
+
+Order: Ascending
+
+#Metric2
+
+Aggreation: Top Hit
+
+Field: main
+
+Aggreate with: Concatenate / Size: 1
+
+Sort on: write_date
+
+Order: Ascending
+
+
+#Buckets
+
+Split rows
+
+Aggregation: Date Histogram
+
+Field: write_date
+
+Minimum interval: Auto
+
+#Options
+
+Max rows per page: 3
+
+```
+
+## Kibana DataMarket 
+
+![datamarket](./elk/Kibana_Data_Market.PNG)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
