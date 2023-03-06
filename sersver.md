@@ -1,7 +1,20 @@
 # 개인 SERVER구축 공부
 
-## WSL을 사용해서 VM없이 윈도우에서 리눅스를 사용해보자!
+[ 참고한 글 ]
 
+- [WSA와 WebServer](https://cocook.tistory.com/87)
+
+**WSA와 Webserver는 함께 배포하는 이유는 더 빠르게 많은 동적,정적페이지 처리를 더 뛰어난쪽에 맡겨 효율적으로 응답하기위함**
+
+WAS(Web Application Server): 정적,동적 페이지 모두 반환가능. 동적페이지 반환에 더 뛰어나다.
+
+Web Server: 정적페이지 반환. SSL 암호화,복호화 처리에 사용한다. 경우에 따라 라우터역할을 하기도한다.(웹 서버하나에 여러 웹어플리케이션을 운영하는경우)
+
+★Django는 서비스 배포시, **파이썬 기반 프레임워크** 여서 WAS와 Web Server 둘 다 같이 배포해야한다.
+
+
+
+## WSL을 사용해서 VM없이 윈도우에서 리눅스를 사용해보자!
 
 1.관리자 권한-CMD 실행 OR 윈도우 POWERSHELL 열어서 WSL --INSTALL (기본값으로 설치)입력
 

@@ -15,6 +15,7 @@
 - Kibana 
 - Logstash
 - Kafaka
+- Doker
 
 
 ## 업데이트 현황
@@ -40,4 +41,5 @@ X: 작성중,학습중
 |Kibana|O|O|ELK.md|
 |Logstash|O|O|ELK.md|
 |Kafaka|X|X|Kafka.md|
+|Doker|X|X|server.md / Doker_manual.md|
 

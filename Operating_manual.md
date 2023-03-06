@@ -403,18 +403,18 @@ for comment in title:
 	print(comment.text)
 
 ```
-## 뷰티풀스푸
+## BeautifulSoup
 
 리퀘스트와 단짝. 기본적으로 
 
 ```python
-import 리퀘스트
-from bs4 import 뷰티풀스푸
+import requests
+from bs4 import BeautifulSoup
 
 url='주소'
 
-resp(변수)=requset.get(url)
-soup=뷰티플스푸(resp.text,'html.parser')
+resp(변수)=requests.get(url)
+soup=BeautifulSoup(resp.text,'html.parser')
 
 위와같이쓰는데,
 
@@ -462,12 +462,11 @@ find_all
 ### elesticsearch
 
 - 인덱스 : 테이블
-- 도큐먼트(doc) : 레코드 (밸류,밸류,밸류)->이것 한줄을의미
-- 매핑 : 스키마(DB 틀, 각 값들에대해 알맞는 스키마를 입혀줌(타입매핑이라고 생각하면될듯))
+- 도큐먼트(doc) : 데이터
+- 매핑 : 스키마
 - 컬럼 : 필드
   
-고로, 도큐먼트는 하나의 인덱스에 꼭 포함되어야하고, 인덱스는 매핑작업이 반드시필요하다. 매핑작업은, 필수는아니지만 매우 권장함.
-
+고로, 도큐먼트는 하나의 인덱스에 꼭 포함되어야하고, 인덱스는 매핑작업이 반드시필요하다. 매핑을 생성해주지않으면 입력되는 도큐먼트타입에따라 자동으로 매핑이 생성된다.  날짜데이터나 정확한값이 입력되어야하는경우 인덱스를 생성할떄 매핑작업을 같이해줘야한다.
 
 ### logstash
 
@@ -476,5 +475,5 @@ find_all
     >파이프라인을 반드시 설정해야한다. 따로 파이프라인파일을 생성해주지않고 쓰려면, 콘솔창에서 -e옵션을쓸수있다.
     >파이프라인은 기본적으로 입력 > 필터 > 출력 으로 이루어져있고 입력/출력은 필수. 필터는 옵션이다.
     >ex: C:\logstash-7.10.1>.\bin\logstash.bat -e "input { stdin { } } output { stdout { } }"
-    >위와같이 cmd창에 입력하고 input이니, 아무거나 입력하면 "message"에 내가입력한 내용이 나오게된다.
+    >위와같이 -e옵션을 이용하여 cmd창에 입력하고 input이니, 아무거나 입력하면 "message"에 내가입력한 내용이 나오게된다.
 
