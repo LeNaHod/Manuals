@@ -102,7 +102,7 @@ export HADOOP_CONF_DIR=$HADOOP_HOME/etc/hadoop
 export PATH=$PATH:$HADOOP_HOME/bin:$HADOOP_HOME/sbin
 
 
-souce ~/.bashrc
+source ~/.bashrc
 
 ★중요! hadoop-env.sh를 설정하러 경로를 변경해줘야함↓
 
