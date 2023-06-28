@@ -9,10 +9,13 @@ sudo apt upgrade -y
 
 sudo apt install vim -y
 
+
 **ssh서버 설치**
 
 sudo apt install openssh-server -y
 sudo apt install ssh-askpass -y
+***sudo apt install pdsh** > 해당 패키지는 'GCP'에서 하둡을 설치할때 사용한다.(로컬의 VM에서는 크게 필요X)
+
 
 **공개키암호화(암복호화다른거).암호안묻고 로그인하는설정**
 
