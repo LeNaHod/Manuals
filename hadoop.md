@@ -146,5 +146,9 @@ Slave-2 ip      Slave-2 DNS명
 
 # 내가사용한 GCP Slave설정
 
+GCP_MasterInstance 내부ip       Master
+GCP_Slave-1 내부ip      Slave01
+
+
 ```
 

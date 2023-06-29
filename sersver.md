@@ -618,7 +618,7 @@ install_setting_Manual에 나와있는 과정과 같이 master용으로 사용�
 블로그의 코드에서 SSH입력 후 저장은 ssh키를 등록해주면된다.
 
 해당 문제를 해결하기위해 pdsh도 설치해야하니,
->sudo apt install pdsh
+>sudo apt install pdsh -y
 pdsh를 먼저 설치해주자.
 
 
@@ -635,6 +635,9 @@ pdsh를 먼저 설치해주자.
     =======================pdsh default설정 부분=============================
     sudo vi /etc/pdsh/rcmd_default (ssh 입력 후 저장)  #이부분이 rcmd socket permission denied 오류를발생시키지않게한다. rcmd의 기본값이rsh라서 발생하는 문제라고한다. 고로, 기본값을 ssh로 바꿔준다.
     ssh localhost
+
+    ※key의 이름을 무조건 rsa로해야 localhost접속 실험시, 권한오류가나지않는데 이부분을 연구해보아야겠음..
+    
 
 
 ![rcmd_default](./GCP%ED%95%98%EB%91%A1%EC%84%A4%EC%B9%98/sshlocalhost%EB%AC%B8%EC%A0%9C%ED%95%B4%EA%B2%B0_1.PNG)

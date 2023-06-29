@@ -14,7 +14,7 @@ sudo apt install vim -y
 
 sudo apt install openssh-server -y
 sudo apt install ssh-askpass -y
-***sudo apt install pdsh** > 해당 패키지는 'GCP'에서 하둡을 설치할때 사용한다.(로컬의 VM에서는 크게 필요X)
+***sudo apt install pdsh -y** > 해당 패키지는 'GCP'에서 하둡을 설치할때 사용한다.(로컬의 VM에서는 크게 필요X)
 
 
 **공개키암호화(암복호화다른거).암호안묻고 로그인하는설정**
@@ -27,7 +27,7 @@ cat ~/.shh/id_rsa.pub >> ~/.ssh/authorized_keys
 
 (11버전설치할것임. 버전은자유)
 
-wegt [tar xvzf amazon-corretto-11-x64-linux-jdk.tar.gz](https://corretto.aws/downloads/latest/amazon-corretto-11-x64-linux-jdk.tar.gz)
+wget [tar xvzf amazon-corretto-11-x64-linux-jdk.tar.gz](https://corretto.aws/downloads/latest/amazon-corretto-11-x64-linux-jdk.tar.gz)
 
 - 코레토의 위치가 루트에있으면 편함 
 - 루트가아닐경우 mv [이동대상] [이동할경로] (여러대상을 한번게 옮기기가능)
@@ -43,7 +43,8 @@ ln -s amazon-corretto-11.0.17.8.1-linux-x64/ java
 
 amazon[tab]-11.[tab] 누르면 / 까지 자동완성 java는  심볼릭 링크 이름
 
-  
+**ls -s amazon-corretto-11.0.19.7.1-linux-x64/ java** > 이건 amazon-crretto-11.0~해당 디렉터리 or 파일안에 java라는 이름을 가진 파일을 찾는듯하다.
+
 ```python
 ~/.bashrc 설정
 
@@ -543,7 +544,10 @@ sudo systemctl enable mysql(서비스명)
 
 3.mysql에 원하는 계정으로 접속해보자
 
-sudo mysql -u 계정명
+sudo mysql -u 계정명 (계정을 만들었을시)
+※하지만, 해당 메뉴얼에서는 mysql을 새로설치한것으로 간주하고 계정,비밀번호가 아직 안만들어진것으로 가정
+
+sudo mysql -u root (mysql 처음설치하고 계정없을시)
 
 4. mysql 계정추가
 
