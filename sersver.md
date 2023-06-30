@@ -647,6 +647,67 @@ pdsh를 먼저 설치해주자.
 ![GCP_ssh_localhost성공](./GCP%ED%95%98%EB%91%A1%EC%84%A4%EC%B9%98//sshlocalhost%EB%AC%B8%EC%A0%9C%ED%95%B4%EA%B2%B0_2.PNG)
 
 
+## hadoop 멀티클러스터 구축을위한 GCP인스턴스 네트워크 설계(하둡설정과 상관X)
+
+이것은 여러개의 CMD창을 켜놓기 귀찮아서 한개의 CMD창으로 여러 인스턴스를 접속하기위해 설계해놓았다. 하둡의 네트워크 설정과 상관X.
+
+```bash
+
+전제)GCP기준 ssh키가 위치해있는 곳에서 작업을한다.
+
+1.ssh-keygen으로 ssh키를 생성하면 개인키/공개키 두가지가 생성된다.
+기본적으로 키이름 (개인키) / 키이름.pub(공개키, 접속을 원하는곳에 뿌려야하는키)로 생성이되는데, 공개키를 authorized_keys 등록해줘야하고 개인키를 .pem파일로 바꿔줘야한다.(순서상관x)
+
+2.나는 마스터 인스턴스에서 여러 슬레이브 인스턴스로 접속할거니까, 마스터인스턴스에서 ssh키가있는곳에서 작업한다.
+
+2-1.(ssh키를 새로생성할시) ssh-keygen -t rsa -m pem -f ~/.ssh/키이름 -P ''(비밀번호는 알아서)
+
+2-2. key가 생성되었으면 개인키를 pem파일로바꿔주자
+
+mv 키이름 키이름.pem (ex: 키이름이 id_rsa이면 mv id_rsa id_rsa.pem)
+
+2-3. 공개키(.pub)를 authorized_keys에 복사하자
+
+cat ~/.ssh/키이름.pub >> ~/.ssh/authorized_keys
+
+2-4. authorized_keys의 권한을 설정해주자
+
+chmod 0600 ~/.ssh/authorized_keys
+
+※만약 실행이안되거나 디렉터리의 권한문제가생긴다면 ~/.ssh 디렉터리의 권한을 0700로바꿔주자 (chmod 0700 ~/.ssh)
+
+3. 해당인스턴스(움직이지않을 마스터인스턴스)의 공개키를 복사하여 원격접속을할 인스턴스에
+키를 교환해준다.
+
+GCP의 경우 웹 콘솔에들어가 원격접속할 인스턴스를 클릭 후, SSH키를 추가해줘야함(위에서 다룬 로컬에서 GCP인스턴스 접속하기위해 SSH키를 등록해줬던것과 동일한 작업)
+
+4. 키가 존재하는 위치에서 원격접속을 위한 config파일을 하나 작성해주자
+
+현재 자신의 위치가 ssh키가있는위치가아니라면 이동.
+>cd ~/.ssh
+
+vim config
+
+HOST master(ssh master 이런식으로 쓰이기때문에 이름은 자유)
+        HostName gcp외부 ip
+        User 리눅스유저명
+        IdentityFile /home/계정명(ex:root)/.ssh/ssh키.pem
+
+HOST slave01
+        HostName gcp외부ip
+        User   리눅스유저명
+        IdentityFile /home/계정명/.ssh/ssh키.pem
+
+저장하고 파일닫고,
+chmod 440 config  #config파일의 권한을바꿈
+
+ssh master or slave01 # 작업하고있는 인스턴스에서 master로 접속한다.
+
+접속이 제대로 이루어지지않을시, hostname을 이용하여 해당 인스턴스의 hostname을 확인해보고, 이름을 통일시켜주고(sudo hostnamectl set-hostname master 호스트명 바꾸는명령어다.)
+>sudo service sshd restart or sudo service ssh restart 로 ssh를 재시작해주자.
+
+```
+
 
 
 ## 도커를 이용해서 장고를 설치하고 gcp에 컨테이너를 올려 배포해보자.

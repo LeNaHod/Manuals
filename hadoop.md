@@ -134,13 +134,26 @@ Slave로 사용할 인스턴스나 가상머신의 ip를 DNS로 등록해준다.
 
 ```bash
 
+### 확인 및 변경
+
+>hostname # hostname확인
+
+>sudo hsotnamectl set-hostname 해당인스턴스의 바꿀DNS이름(인스턴스당 1)
+
+sudo hostnamectl set-hostname master # 각 인스턴스마다
+sudo hostnamectl set-hostname slave01
+sudo hostnamectl set-hostname slave02
+sudo hostnamectl set-hostname slave03....
+
+## 호스트이름으로 통신이 가능하게 하자.
+
+- 각 인스턴스 마다 master, slave01 이라는 이름으로 통신이 가능하도록 설정을 한다.
+
 
 # sudo vi /etc/hosts
 
 Slave-1 ip      Slave-1 DNS명
 Slave-2 ip      Slave-2 DNS명
-.
-.
 .
 원하는 갯수까지 등록
 
