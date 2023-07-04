@@ -252,6 +252,7 @@ Starting nodemanagers
 만약 슬레이브 인스턴스들을 늘리고싶다면, 인스턴스를 생성해서 마스터 인스턴스의 /etc/hadoop/workers에 추가해주자.(기본값 localhost지우고, 슬레이브들을 각 노드들에 등록해줘야한다. localhost가 남아있으면 접근오류남.)
 
 ```bash
+>cd $HADOOP_CONF_DIR (~/.bshrc에 등록해놓은 하둡 경로)
 >vi workers (마스터인스턴스에 워커들을 등록해주는과정)
 
 slave01
@@ -265,3 +266,6 @@ hdfs-site.xml 의 dfs.secondary.http.address 부분에서 지정해준 주소와
 ![GCP분산구축_슬레이브_인스턴스](/GCP%ED%95%98%EB%91%A1%EC%84%A4%EC%B9%98/%ED%95%98%EB%91%A1%EB%B6%84%EC%82%B0_%EC%8A%AC%EB%A0%88%EC%9D%B4%EB%B8%8C%EC%9D%B8%EC%8A%A4%ED%84%B4%EC%8A%A4.PNG)
 
 슬레이브 인스턴스에서는 START-ALL.SH로 실행X / 마스터인스턴스에서만 실행.
+
+이후, 슬레이브 인스턴스를 하나 더 만들어서 1개의 마스터인스턴스와 두개의 슬레이브로 하둡멀티클러스터를 구축하였다.
+

@@ -763,6 +763,31 @@ ex) docker run --name 컨테이너명 -dp 9510:9510 이미지이름
 
 성공이다.
 
+
+## Djangon(장고) 마이그레이션 해제
+
+프로젝트 코드는 유지하면서,
+데이터베이스 변경 & 데이터베이스를 초기화하고싶을때 마이그레이션 해제하는방법
+
+첫번째방법 마이그레이션 폴더내의 `__init__.py` 파일을 제외한 모든 파일들 모두삭제.(마이그레이션 기록삭제)
+
+두번쨰방법 unix계열 OS사용시(CODE의 터미널의 Bash같은것) 아래 코드를 실행
+
+>find . -path "*/migrations/*.py" -not -name "__init__.py" -delete
+
+OR
+
+>find . -path "*/migrations/*.pyc"  -delete
+
+위의 두가지 방법으로 마이그레이션을 초기화할수있다.
+
+이후, 연결할 새로운 데이터베이스의 정보를 settings.py에 입력 후, 새 마이그레이션을 진행
+
+>python manage.py makemigrations
+>python manage.py migrate
+
+[참고글](https://yuda.dev/216)
+
 ## 도커허브를 이용하여 gep에도올리고 배포해보자
 
 [도커허브](https://hub.docker.com/)

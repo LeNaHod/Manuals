@@ -14,7 +14,7 @@ sudo apt install vim -y
 
 sudo apt install openssh-server -y
 sudo apt install ssh-askpass -y
-***sudo apt install pdsh -y** > 해당 패키지는 'GCP'에서 하둡을 설치할때 사용한다.(로컬의 VM에서는 크게 필요X)
+***sudo apt install pdsh -y** > gcp에서 하둡설치할때 ssh 로컬작동을 위해 잠시 사용.
 
 
 **공개키암호화(암복호화다른거).암호안묻고 로그인하는설정**
