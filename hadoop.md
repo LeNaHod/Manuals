@@ -32,6 +32,15 @@ GCP 를 이용하여 Master - Slave 를 별개의 인스턴스에 생성하여 �
 단, ~.xml류나 env.sh 류 설정과 다운로드는 일반계정으로해도 무관하다.
 
 
+### Hadoop간의 통신할 계정설정
+
+```bash
+
+#난 root로 통신할거니까 root로함
+
+>sudo chown root:root -R /home/계정명/hadoop-3.3.4
+
+```
 ### Haoop ssh교환 및 네트워크 설정
 
 ```bash
@@ -228,9 +237,151 @@ hadoop-env나 기타 실행경로 지정, 기타옵션은 해당 레포지터리
 
 ```bash
 
+##bashrc 설정
 
+# HADOOP
+export HADOOP_HOME=/usr/local/hadoop
+export HADOOP_CONF_DIR=$HADOOP_HOME/etc/hadoop
+export YARN_CONF_DIR=$HADOOP_HOME/etc/hadoop
+export PATH=$PATH:$HADOOP_HOME/bin:$HADOOP_HOME/sbin
+
+
+
+### 나는 root계정으로 통신할것이기때문에 root로 지정. 만약 원하는 계정이있다면 root자리에 계정명입력
+### ex) export HDFS_NAMENODE_USER="계정명"
+
+# HADOOP USER
+export HDFS_NAMENODE_USER="root"
+export HDFS_DATANODE_USER="root"
+export HDFS_SECONDARYNAMENODE_USER="root"
+export YARN_RESOURCEMANAGER_USER="root"
+export YARN_NODEMANAGER_USER="root"
+
+## hadoop-env.sh 
+
+>cd $HADOOP_CONF_DIR 
+>sudo vi hadoop-env.sh
+
+#exmport hadoop_home  ->원래주석으로 되어있던부분 
+->export hadoop_home=/home/계정명/hadoop  으로 설정
+
+###(계정=hadoop이 설치되어있는 경로의 상위. 만약 hadoop이 home아래 loc라는 폴더에 설치되어있으면 /home/loc/hadoop 으로작성)
+
+#export hadoop_pid_dir=/temp ->원래주석으로 되어있던부분 
+->export hadoop_pid_dir=$HADOOP_HOME/pids
+
+
+
+#export JAVA_HOME=
+->export JAVA_HOME=/home/계정명/java
+# export HADOOP_CONF_DIR=${HADOOP_HOME}/etc/hadoop 주석되어있다면 해제
+# export HADOOP_OS_TYPE=${HADOOP_OS_TYPE:-$(uname -s)} 주석되어있다면 해제
+
+
+## sudo vim core-site.xml
+### 모든 데이터노드들이 master에 9000번 포트로 통신을 한다.
+
+<configuration>
+    <property>
+        <name>fs.defaultFS</name>
+        <value>hdfs://master:9000</value>
+    </property>
+</configuration>
+
+
+## sudo vim hdfs-site.xml
+
+<configuration>
+    <property>
+        <name>dfs.replication</name>
+        <value>2</value>
+    </property>
+
+    <property>
+        <name>dfs.namenode.name.dir</name>
+        <value>file:///hdfs_dir/namenode</value>
+    </property>
+
+    <property>
+        <name>dfs.datanode.data.dir</name>
+        <value>file:///hdfs_dir/datanode</value>
+    </property>
+
+    <property>
+        <name>dfs.namenode.secondary.http-address</name>
+        <value>slave01:50090</value>
+    </property>
+</configuration>
+
+### sudo vim yarn-site.xml
+
+
+<configuration>
+    <property>
+        <name>yarn.nodemanager.local-dirs</name>
+        <value>file:///hdfs_dir/yarn/local</value>
+    </property>
+
+    <property>
+        <name>yarn.nodemanager.log-dirs</name>
+        <value>file:///hdfs_dir/yarn/logs</value>
+    </property>
+
+    <property>
+        <name>yarn.resourcemanager.hostname</name>
+        <value>master</value>
+    </property>
+</configuration>
+
+
+### sudo vim mapred-site.xml
+
+<configuration>
+    <property>
+        <name>mapreduce.framework.name</name>
+        <value>yarn</value>
+    </property>
+</configuration>
+```
+
+### 마스터 인스턴스에 슬레이브 인스턴스들을 등록해주자
+
+```bash
+>cd $HADOOP_CONF_DIR (~/.bshrc에 등록해놓은 하둡 경로)
+>vi workers (마스터인스턴스에 워커들을 등록해주는과정)
+
+slave01
+slave02....
+```
+
+만약 슬레이브 인스턴스들을 늘리고싶다면, 인스턴스를 생성해서 마스터 인스턴스의 /etc/hadoop/workers에 추가해주자.(기본값 localhost지우고, 슬레이브들을 각 노드들에 등록해줘야한다. localhost가 남아있으면 접근오류남.)
+
+### 노드들을 포맷해주자. namenode와 secondary_nameNode에서 실행
+
+master와 secondary_nameNode에서
+
+```bash
+
+#hadoop-3.3.4 / hadoop이 설치되어있는 경로에서 실행
+
+/home/계정명/hadoop-3.3.4/bin/hdfs namenode -format /hdfs_dir
+
+# 심볼릭한 경우
+/home/계정명/hadoop/bin/hdfs namenode -format /hdfs_dir
 
 ```
+
+## workerNode, DataNode에서
+
+```bash
+
+/home/계정명/hadoop-3.3.4/bin/hdfs datanode -format /hdfs_dir/
+
+# 심볼릭한 경우
+/home/계정명/hadoop/bin/hdfs datanode -format /hdfs_dir
+
+```
+
 
 ![하둡분산_1](/GCP%ED%95%98%EB%91%A1%EC%84%A4%EC%B9%98/%ED%95%98%EB%91%A1%EB%B6%84%EC%82%B0.PNG)
 
@@ -249,16 +400,6 @@ Starting secondary namenodes [slave01]
 Starting resourcemanager
 Starting nodemanagers
 ```
-만약 슬레이브 인스턴스들을 늘리고싶다면, 인스턴스를 생성해서 마스터 인스턴스의 /etc/hadoop/workers에 추가해주자.(기본값 localhost지우고, 슬레이브들을 각 노드들에 등록해줘야한다. localhost가 남아있으면 접근오류남.)
-
-```bash
->cd $HADOOP_CONF_DIR (~/.bshrc에 등록해놓은 하둡 경로)
->vi workers (마스터인스턴스에 워커들을 등록해주는과정)
-
-slave01
-slave02....
-```
-
 ![GCP분산구축_슬레이브](/GCP%ED%95%98%EB%91%A1%EC%84%A4%EC%B9%98/%ED%95%98%EB%91%A1%EB%B6%84%EC%82%B0_%EC%8A%AC%EB%A0%88%EC%9D%B4%EB%B8%8C_GUI.PNG)
 
 hdfs-site.xml 의 dfs.secondary.http.address 부분에서 지정해준 주소와 포트로 접속하여 세컨더리 네임노드 동작,정보를 볼수있다.
