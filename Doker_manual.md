@@ -1,10 +1,11 @@
-# Doker
+# Docker
+
+Docker Version : 5:20.10.22
 
 ## Preview
 Doker로 펫 프로젝트 Django앱을 Doker이미지로 생성하여, GCP로 운영,배포
 
 - 로컬개발환경에서 개발이 완료된 이미지를 Doker이미지로 말아서 GCP로 배포할것이다.
-- Cloud Run / Compute Engine 중 하나를 선택할수있다. Cloud Run으로 배포해볼 예정이다.
 - Djnago+Nginx를 Doker를 통하여 배포
 
 --------
@@ -137,4 +138,70 @@ ex)
 **도커 데스크톱**을 이용하여 로컬에있는 이미지파일들, 실행중인 컨테이너들을 볼수있고, 허브도 확인할수있다.
 위 사진을 보면 이미지파일과 허브에올린 이미지파일, 같은 도커파일이 이름만다르게 올라간걸 확인할수있다.
 도커파일은 같으므로 하나는 삭제해도 무관할것같다.
+
+
+## Docker를 서버(GCP)에도 설치하자
+
+아까 업로드해놓은 Docker이미지를 서비스를 배포할 서버에 가져와야한다.
+여러방법이있겠지만 아까 Docker Hub에 업로드해놓았으니, 서버에도 Docker를 설치하여 Hub를 통해 이미지파일을 다운받아볼것이다.
+
+GCP를 통해 배포할것이므로 GCP콘솔에 접속하여 Docker를 설치한다.
+내가 사용하는 GCP의 가상머신이미지는 **Ubuntu-20.04.5**이므로, 우분투 설치메뉴얼을 따른다.
+
+[도커설치_docs_우분투](https://docs.docker.com/engine/install/ubuntu/)
+
+Local Docker버전이 20.10.22버전이므로, 서버에도 동일한 버전의 도커를 설치할것
+
+### 도커설치 코드
+
+```bash
+
+#apt 저장소를 이용하는 방법을 사용
+
+
+##특정 버전을 설치하기위해 검색 및 설치
+
+### 설치가능한 버전 검색
+apt-cache madison docker-ce | awk '{ print $3 }'
+
+### 원하는 버전 선택
+VERSION_STRING=5:20.10.22~3-0~ubuntu-focal
+
+###선택한 버전 설치
+sudo apt-get install docker-ce=$VERSION_STRING docker-ce-cli=$VERSION_STRING containerd.io docker-buildx-plugin docker-compose-plugin 
+
+### 도커에서 기본으로 제공하는 테스트 이미지를 실행하여 설치 테스트진행
+
+sudo docker run hello-world
+```
+
+[GCP도커설치성공](/docker_Manual/Docker_GCP_install_step1.PNG)
+
+설치에 성공하면 기본제공이미지인 hello-world 이미지가 정상실행된다.
+이후
+
+>docker -version / docker create 등 docker 명령어 사용가능
+
+**단, docker 명령어 사용시 앞에 sudo를 붙여줘야한다**
+기본적으로 도커데몬이 root로실행되고있기때문이라고한다. 
+일반 계정사용자로 docker명령어를 이용하고싶다면 아래 Docker공식문서를 참고
+
+[Docker_docs_사용자로데몬실행](https://docs.docker.com/engine/security/rootless/)
+[Docker_docs_사용자로관리하기](https://docs.docker.com/engine/install/linux-postinstall/)
+
+### Docker Compose
+
+Docker compose란?
+docker-compose는 복수 개의 컨테이너가 유기적으로 묶여서 하나의 도커 애플리케이션으로 동작할 수 있도록 구성하는 도구이며, 복수 개의 컨테이너 생성 및 실행을 자동화하고 관리하는 기능을제공하는것인데 예전엔 수동으로 설치해야했지만, 최근나오는 Docker패키지에 포함되어있는 기능이다.
+
+기본적으로 Docker-compose.yml파일을 읽어서 해당 파일안에 설정된 컨테이너의 정의에따라 컨테이너를 생성한다.
+그러므로, Docker-compose.yml파일을 사용자용도에맞게 작성하여 생성한다.
+
+추가적 옵션이나 사용방법은 아래 링크참조
+
+[Docker Compose_Doc](https://docs.docker.com/compose/)
+
+아래 명령어로 설치되어있는지 버전확인
+
+> docker-compose -v
 
