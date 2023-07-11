@@ -16,6 +16,12 @@
 - Logstash
 - Kafaka
 - Doker
+- Zookeeper
+
+# 클라우드 환경
+
+- Google Cloud Platform(GCP)
+
 
 
 ## 업데이트 현황
@@ -41,5 +47,6 @@ X: 작성중,학습중
 |Kibana|O|O|ELK.md|
 |Logstash|O|O|ELK.md|
 |Kafaka|X|X|Kafka.md|
-|Doker|X|X|server.md / Doker_manual.md|
+|Doker|O|O|server.md / Doker_manual.md|
+|Zookeeper|X|X|X|
 
