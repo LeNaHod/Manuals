@@ -207,6 +207,30 @@ docker-compose는 복수 개의 컨테이너가 유기적으로 묶여서 하나
 
 ### 서버에 Docker Hub에 올려놓은 이미지파일을 PULL하여 실행해보자
 
+Git pull처럼 Doker Hub에 올려놓은 이미지 파일을 Pull로 해당 인스턴스에 이미지를 받아와보자.
+
+Doker Hub에 올린 이미지파일은, 검색,업로드,다운로드 등 을 할 수있다.
+
+```bash
+
+# 검색하기
+docker search 옵션 검색어
+
+## 검색하기 옵션들
+--automated=false : Automated Build만 표시
+
+--no-trunc=false : 모든 결과를 다 표시
+
+-s[--stars=n] : star 수가 n개 이상인 결과만 표시
+
+#다운로드받기
+
+docker pull 옵션 이미지명:태그명
+
+★태그 생략시 이미지명의 가장 최신 버전을 자동으로내려받고, '-a'옵션을 사용시, 모든 버전 태그를 다운로드 받는다.
+
+docker pull -a 이미지이름 (예시)
+```
 
 ### Test 인스턴스를 한개 더 생성하자
 
