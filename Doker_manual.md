@@ -254,3 +254,9 @@ Django서비스만 운영할 Test인스턴스를 한개 더 생성하여 비교�
 >zip [파일명.zip] [폴더명]
 
 ```
+
+## 로컬 Vscode에 Django Test용 인스턴스를 연결
+
+Django 프로젝트를 사용할때 파일내부구조를 Vscode를 통하면 보기 쉬우므로 로컬의 Vscode와 연결하여 
+사용해봄.
+
