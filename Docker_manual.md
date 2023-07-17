@@ -161,6 +161,8 @@ Local Docker버전이 20.10.22버전이므로, 서버에도 동일한 버전의 
 
 ##특정 버전을 설치하기위해 검색 및 설치
 
+sudo apt-get update
+
 ### 설치가능한 버전 검색
 apt-cache madison docker-ce | awk '{ print $3 }'
 
@@ -204,6 +206,23 @@ docker-compose는 복수 개의 컨테이너가 유기적으로 묶여서 하나
 아래 명령어로 설치되어있는지 버전확인
 
 > docker-compose -v
+
+
+### Docker Hub에 올려놓은 이미지를 삭제하여 보자
+
+[도커허브](https://hub.docker.com/)
+
+허브에 업로드한 이미지에 문제가생겨서 이미지를 삭제하고 재업로드해야할 일이생겼다.
+도커허브에 접속하여 업로드한 이미지를 삭제해보자.
+
+![도커허브](./docker_Manual/도커허브_업로드이미지삭제.PNG)
+
+도커 허브에 접속하여 로그인해서 상단메뉴 -> ***settings***를 클릭
+
+![도커허브 이미지삭제](./docker_Manual/도커허브_업로드이미지삭제_2.PNG)
+
+Delete repository 를 누르고 삭제할 이미지의 이름을 입력하면 정상적으로 삭제가된다.
+
 
 ### 서버에 Docker Hub에 올려놓은 이미지파일을 PULL하여 실행해보자
 
