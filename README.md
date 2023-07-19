@@ -46,7 +46,7 @@ X: 작성중,학습중
 |Elasticsearch7(elk7)|O|O|ELK.md|
 |Kibana|O|O|ELK.md|
 |Logstash|O|O|ELK.md|
-|Kafaka|X|X|Kafka.md|
+|Kafaka|-|-|Kafka.md / △|
 |Doker|O|O|server.md / Doker_manual.md|
-|Zookeeper|X|X|X|
+|Zookeeper|-|-|△|
 
