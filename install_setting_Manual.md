@@ -27,7 +27,7 @@ cat ~/.shh/id_rsa.pub >> ~/.ssh/authorized_keys
 
 (11버전설치할것임. 버전은자유)
 
-wget [tar xvzf amazon-corretto-11-x64-linux-jdk.tar.gz](https://corretto.aws/downloads/latest/amazon-corretto-11-x64-linux-jdk.tar.gz)
+wget [amazon-corretto-11-x64-linux-jdk.tar.gz](https://corretto.aws/downloads/latest/amazon-corretto-11-x64-linux-jdk.tar.gz)
 
 - 코레토의 위치가 루트에있으면 편함 
 - 루트가아닐경우 mv [이동대상] [이동할경로] (여러대상을 한번게 옮기기가능)
