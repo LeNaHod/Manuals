@@ -1,3 +1,11 @@
+### 아나콘다
+필요에따라, 아나콘다로 실행해야하는경우도있으니 GCP에서 GPU VM생성+아나콘다설치는 해당 링크를 참조.
+[GPU VM생성](https://m.blog.naver.com/blueday9404/221919561565)
+
+아나콘다의설치는 [아나콘다공식홈페이지](https://www.anaconda.com/download)에서 가장 하단에서 각 OS에맞는 버전을 다운로드받을수있다.
+wget으로 다운받으려면 링크를복사하자.
+
+
 ### Test 인스턴스를 한개 더 생성하자
 
 도커 이미지로 배포하여 도커 컨테이너로 프로젝트가 정상적으로 실행되는지 비교하기위해,
@@ -96,4 +104,60 @@ pip install -r requirements.txt
 >pip install mysql-client
 
 ```
+
+※ 참고사항
+
+```bash
+
+# pytorch
+
+torch == pytorch인데, requirements.txt안에 포함이되어있어도 사양이낮은 서버에는 설치가 자동으로 종료된다.
+
+
+pip install torch==1.11.0
+Collecting torch==1.11.0
+Killed
+
+▲ 사양이낮으면 자동종료되버린다.
+
+이럴경우, 설치할때 옵션으로 사양을 지정해주면된다.
+
+
+pip install torch-1.11.0-cp38-cp38-manylinux1_x86_64.whl
+
+or
+
+pip install torch-1.11.0 --no-cache-dir
+
+
+# openCV & libgl1
+
+만약 opencv오류가나면 
+opencv의 설치해주고, libGL.so.1: 오류가난다면
+
+sudo apt-get -y install libgl1-mesa-glx 
+
+
+# tensorflow 오류
+
+GCP에서 Django용 인스턴스를 생성할때, GPU가 너무비싸서 GPU를 사용하지않았다.
+이후, pip를 통해 tensorflow를 설치해주니까 제대로 tensorflow가 제대로 작동하지않는다.
+
+찾아보니 gpu를 지원받는버전, cpu만사용하는 버전이있었고 설치방법에도 아나콘다를이용한(conda) 설치방법과
+pip를 이용하여 설치하는 방법이있었다
+찾아보니 pip를 이용하여 tensorflow를 설치하게된다면 느린 cpu성능과 gpu지원에 필요한 CUDA나 각종 라이브러리를 수동으로 설치/설정해줘야한다.
+반면 conda를 이용할시, 더 나은 cpu성능과 gpu지원에 필요한 라이브러리들을 같이설치해준다.
+(tensorflow는 GPU를 이용하면 CPU만 이용하는 버전보다 훨씬빠르다.)
+
+```
+
+## django실행에 성공했으면 외부에서 작동중인 서버에 접속해보자
+
+기본적으로 django는 8000번 포트를 사용한다.
+일단 기본포트로 두고, 외부에서 접속해본다.
+
+- python manage.py runserver gcp내부ip:8000 or 0.0.0.0:8000
+
+테스트용으로 프로젝트가 잘 구동하는지 확인할수있다.
+
 
