@@ -239,6 +239,8 @@ hadoop-env나 기타 실행경로 지정, 기타옵션은 해당 레포지터리
 
 ##bashrc 설정
 
+※root에 진입한 상태로 bashrc에 아래 내용이없으면 hdfs명령어 작동x
+
 # HADOOP
 export HADOOP_HOME=/usr/local/hadoop
 export HADOOP_CONF_DIR=$HADOOP_HOME/etc/hadoop
@@ -286,6 +288,12 @@ export YARN_NODEMANAGER_USER="root"
         <name>fs.defaultFS</name>
         <value>hdfs://master:9000</value>
     </property>
+
+### 하둡의 웹 UI에서 기본으로사용할 사용자를 등록해준다. 웹UI에서 권한오류를방지
+   <property>
+       <name>hadoop.http.staticuser.user</name>
+       <value>hdfs</value> #현재 하둡을 실행시키고있는 서버의 계정명입력
+   </property>
 </configuration>
 
 
@@ -409,4 +417,140 @@ hdfs-site.xml 의 dfs.secondary.http.address 부분에서 지정해준 주소와
 슬레이브 인스턴스에서는 START-ALL.SH로 실행X / 마스터인스턴스에서만 실행.
 
 이후, 슬레이브 인스턴스를 하나 더 만들어서 1개의 마스터인스턴스와 두개의 슬레이브로 하둡멀티클러스터를 구축하였다.
+
+## Django 웹 서비스가 운영되면서 수집된 데이터를 하둡에도 저장해보자
+
+현재 진행하는 서비스는 운영되면서 수집된 데이터는 로컬에 저장하여, RDBMS로 전송되는 구조를 가지고있다.
+이 단계에서 하둡에도 수집된 데이터를 저장할수있게한다.
+
+### HDFS명령어를 이용해 하둡에 파일을 적재해보자.
+
+기본적으로 HDFS의 파일을 조작하기위해 아래 두가지 커맨드를 사용한다.
+
+    HDFS DFS ~
+    HDFS FS ~
+
+Django를 통해 들어온 파일 및 정보들을 Django서버가 구동되고있는 인스턴스로컬에 저장하고, 로컬에서 에어플로우를 이용하여 Hadoop으로 적재하는 방법을 그대로 이어가려고했으나, 바로 적재할수있는 방법을 생각하다 HDFS API를 이용하기로했다.
+
+일단 hadoop이 설정한대로 파일을 잘 분산시켜서 저장하고있는지 테스트파일을 로컬에서 만들어 올려본다.
+
+```bash
+
+hdfs dfs -mkdir /testdir # 현재위치(/~)에 testdir라는 디렉터리를생성
+
+hdfs dfs -put {input_file경로(로컬)} {output_file경로(하둡에저장할경로)}/저장할파일명 # 로컬->하둡으로 저장하는것
+
+hdfs dfs -get #하둡->로컬로가져오는것
+
+hdfs fsck [하둡파일경로]-files -blocks -locations  #저장한 파일이 어디어디에 분산저장되었는지 확인
+
+위의 명령어 실행시
+
+http:마스터인스턴스ip(or도메인)/포트 '' from /마스터인스턴스내부ip for path / 파일의경로 at 저장일시 '' 파일크기, 레플리카 갯수(분산저장된곳):n n block(s) :Ok '' Live_repl=n
+
+DatanodeInfoWithStorage[데이터노드(work01 or slave01)ip:포트,데이터노드ID(저장소ID)]
+DatanodeInfoWithStorage[데이터노드2(work02 or slave02)ip:포트,데이터노드ID(저장소ID)]
+
+위와같이 분산저장이 잘되었는지 확인할수있다.
+또한 웹UI를통하여 확인할수도있다.
+
+```
+※네임노드(마스터 네임노드)말고 워커 데이터노드 인스턴스의 로컬에서 파일을 업로드해도, hadoop에 업로드가 된다.
+
+이제 Django 서비스가 구동되는 서버에서 하둡에 데이터를 전송하기위해 **WebHDFS** 와 **HttpFS**의 차이점을 알아보고 전송해보자.
+
+### WebHDFS VS HttpFS
+
+-WebHDFS
+
+둘다 하둡클라이언트가 하둡바이너리를 설치하지않아도 다양한 언어로 HDFS에 접근할수있도록 REST형태로 개발된 API이다.
+하둡 에코시스템 외부에서 동작하는 애플리케이션(외부 프로그램)이 HDFS에 접근해서 생성,변경하는 작업을 도와준다.
+
+REST를 기반으로 만들어졌기떄문에, GET, PUT, POST, DELETE등 HTTP메서드를 활용한다.
+
+EX) GET = OPEN / GETFILESTATUS / LISTSTATUS | PUT = CREATE / MKDIRS / RENAME 등
+
+<mark>Http-GET</mark>
+
+|옵션명|설명|
+|:---:|:---:|
+|OPEN|see FileSystem.open|
+|GETFILESTATUS|see FileSystem.getFileStatus|
+|LISTSTATUS|see FileSystem.listStatus|
+|GETCONTENTSUMMARY|see FileSystem.getContentSummary|
+|GETFILECHECKSUM|see FileSystem.getFileChecksum|
+|GETHOMEDIRECTORY|see FileSystem.getHomeDirectory|
+|GETDELEGATIONTOKEN|see FileSystem.getDelegationToken|
+
+<mark>Http-PUT</mark>
+
+|옵션명|설명|
+|:---:|:---:|
+|CREATE|see FileSystem.create|
+|MKDIRS|see FileSystem.mkdirs|
+|RENAME|see FileSystem.rename|
+|SETREPLICATION|see FileSystem.setReplication|
+|SETOWNER|see FileSystem.setOwner|
+|SETPERMISSION|see FileSystem.setPermission|
+|SETTIMES|see FileSystem.setTimes|
+|RENEWDELEGATIONTOKEN|see DistributedFileSystem.renewDelegationToken|
+|CANCELDELEGATIONTOKEN|see DistributedFileSystem.cancelDelegationToken|
+
+[HADOOP_REST_API_공식레퍼런스](https://hadoop.apache.org/docs/r1.0.4/webhdfs.html)
+
+**WebHDFS를 사용하기위하여 hdfs-site.xml파일안에 아래 property를 추가해줘야한다.**
+
+```bash
+#hdfs-site.xml
+
+<property>
+  <name>dfs.webhdfs.enabled</name> #webhdfs를 허용하는 속성
+  <value>true</value>
+</property>
+<property>
+    <name>dfs.namenode.http-address</name> #webhdfs를 사용할때 namenode의 주소설정
+    <value>[ip or dns]:[prot]</value> #webhdfs로 통신할 namenode의 ip/port입력. 여기에 입력한 IP와 포트로만 webhdfs를 이용할수있다.
+</property>
+```
+
+namenode의 hdfs-site.xml을 설정해줬으면, 하둡바이너리가 설치되지않은곳에서 curl을 통하여 HDFS에 접근할수있게된다.
+보통 접근주소는 hdfs-site.xml에 지정한 ip:포트 를 따른다.
+
+하둡바이너리가 설치되어있지않은 인스턴스와, 내 로컬 pc에서 gcp에서 동작중인 HDFS에 접근해본다.
+
+```bash
+#기본형식
+http://HOST:HTTP_PORT/webhdfs/v1/<PATH>?op=...
+
+#작성 예
+hdfs://localhost:9000/user/temp
+            ↓↓↓↓
+http://localhost:50070(hdfs-site.xml에 등록한포트)/webhdfs/v1/user/temp?op=LISTSTATUS
+
+# 특정 디렉토리 조회 (내부 파일보기)
+curl -i 'http://[접근할hdfs ip]:[포트]/webhdfs/v1/[디렉토리경로]/?op=LISTSTATUS'
+
+# 특정 디렉토리안에 있는 파일 읽기
+curl -i -L "http://[접근할hdfs ip]:[포트]/webhdfs/v1/[디렉토리경로]/?op=OPEN"
+
+# 디렉토리 생성
+curl -X PUT 'http://[접근할hdfs ip]:[포트]/webhdfs/v1/[디렉토리경로 & 디렉토리명]?op=MKDIRS&user.name=하둡을실행중인기본유저명' #hdfs에 해당경로에 디렉토리 생성
+
+```
+
+-HttpFS
+
+WebHDFS랑 비슷한 역할을하지만, WebHDFS보다 보안성이 뛰어나다는 장점이 있으며, HttpFS가 프록시같은 역할도 한다.
+
+WebHDFS는 요구하는 파일을 데이터노드에서 직접 가져오기때문에,
+**클라이언트 <-> 네임노드/데이터노드 사이의 모든방화벽이 열려있어야한다.**
+대신 직접 가져오기때문에 속도가 빠르다는 장점이있다.
+
+HttpFS는 단일 서버와 통신하기때문에 속도는 느리지만, 노드들사이에 모든 방화벽이
+열려있지않아도 된다.
+**클라이언트 <-> HttpFS서버** 의 구조로 이루어져있다.
+
+
+일단 이번엔 해당프로젝트에서 속도가 조금 더 중요하기때문에 WebHDFS방식을 골랐다.
+
 
