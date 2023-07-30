@@ -20,7 +20,7 @@ sudo apt install ssh-askpass -y
 **공개키암호화(암복호화다른거).암호안묻고 로그인하는설정**
 
 ssh-keygen -t rsa -P '' -f ~/.ssh/id_rsa
-cat ~/.shh/id_rsa.pub >> ~/.ssh/authorized_keys
+cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
 
 
 ## 2.아마존 corretto=java 설치
