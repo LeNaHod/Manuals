@@ -515,6 +515,7 @@ EX) GET = OPEN / GETFILESTATUS / LISTSTATUS | PUT = CREATE / MKDIRS / RENAME 등
 
 namenode의 hdfs-site.xml을 설정해줬으면, 하둡바이너리가 설치되지않은곳에서 curl을 통하여 HDFS에 접근할수있게된다.
 보통 접근주소는 hdfs-site.xml에 지정한 ip:포트 를 따른다.
+webhdfs는 사용하려면 사용설정을 해줘야하므로 worker의 hdfs-site.xml에도 속성을 추가해준다.
 
 하둡바이너리가 설치되어있지않은 인스턴스와, 내 로컬 pc에서 gcp에서 동작중인 HDFS에 접근해본다.
 
@@ -571,6 +572,69 @@ hdfs라이브러리는 접근할 hdfs의 정보를 입력하고, .update / .read
 
 여기서 에어플로우를 이용하던지, django서비스를 통해 바로 수집된 이미지파일등을 로컬에 저장하지않고 hdfs에 업로드시킬지는 자유이다.
 나는 에어플로우를 사용하기보다 django서비스에서 수집된 파일들을 바로 hdfs에 업로드하는 방식을 선택했다.
+
+테스트를 위해 HDFS에 이미지파일을 저장해놓고, 원격지에서 다운로드받고, 원격지에서 큰 이미지파일폴더를 올려보기로했다.
+
+![hdfs이미지다운로드](./hadoop_web/hdfs_Test_imgs1.PNG)
+
+ ```python
+
+#webhdfs.py 다운로드받는 파이썬파일
+
+원격지 에있는 hdfs에서 특정 디렉토리 or 파일을 다운로드받아온다
+import os
+import hdfs
+from hdfs import InsecureClient
+client_hdfs = InsecureClient("http://[ip]:[port]", user="foo") # user명와 ip:port는 하둡이 실행중인 서버와 계정의정보
+#client_hdfs = InsecureClient("http://[ip]:[port]", user="foo",timeout=1 or n) # 파일을 조작할때 hdfs의 서버의 응답을 지정
+
+client_hdfs.download('다운로드받을hdfs파일경로', '로컬저장경로')
+
+>python webhdfs.py
+
+```
+![hdfs이미지다운로드2](./hadoop_web/hdfs_Test_imgs2.PNG)
+
+▲위와같이 원격지에있는 hdfs에서 이미지파일이 깨지지않고 제대로 다운로드된것을 확인할수있다.
+
+```python
+
+#webhdfs_upload 원격지에있는 hdfs에 파일을 올리는 파이썬파일
+#디렉토리를 upload할것이다.
+
+import os
+import hdfs
+from hdfs import InsecureClient
+client_hdfs = InsecureClient("http://[ip]:[port]", user="foo", timeout=1) 
+client_hdfs.upload('[파일을 업로드할 하둡경로]','[로컬에서 업로드할 파일&디렉토리경로]')
+
+>python webhdfs_upload
+
+```
+
+![hdfs이미지업로드](/hadoop_web/hdfs_Test_imgs3.PNG)
+
+▲로컬의 디렉토리가 원격지의 hdfs에 잘 올라간것을 볼수있다.
+
+
+timeout을 코드에서 삭제하면 ConnectionPool 오류를 반환한다.
+
+간격을 충분히줬는데도 오류를 반환한다면 webhdfs가 실행중인 포트를 확인해보자.
+
+```netstat -an | grep 50070(webhdfs포트) | grep LIST```  
+
+### 고려사항
+
+서비스를 이용하면서 파일을 바로 원격지의 hdfs에 업로드시키기위해 webhdfs를 선택했는데 ConnectionPool오류가
+꽤 자주 발생한다.
+
+이것에대해서는 해결방법을 아직 찾는중이다.
+서버와 포트는 정상실행중인데 불규칙적으로 오류를 반환한다.
+계속 해당오류가 발생한다면 다른방법으로 hdfs에 수집된파일을 업로드하는 방식을 생각해봐할것같다.
+
+파일을 하나하나 간격을두고 업로드하면 괜찮을것같은데 실용성이 있을진 모르겠다.
+문제사항이 많으면 인스턴스를 통합하여 로컬에서 에어플로우를 이용해 hdfs에 업로드하는 방식을 채택해야할것같다.
+
 
 원격지의 hdfs에 파일을 저장하기위해 코드를 작성한다.
 
