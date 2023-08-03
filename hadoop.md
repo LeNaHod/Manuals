@@ -317,7 +317,7 @@ export YARN_NODEMANAGER_USER="root"
 
     <property>
         <name>dfs.namenode.secondary.http-address</name>
-        <value>slave01:50090</value>
+        <value>slave01:port</value>
     </property>
 </configuration>
 
@@ -639,7 +639,23 @@ timeout을 코드에서 삭제하면 ConnectionPool 오류를 반환한다.
 원격지의 hdfs에 파일을 저장하기위해 코드를 작성한다.
 
 ```python
-
+# 만약 HttpconnectionPool오류를 만난다면,500번상태면 예외처리
+        # 서버에 이미지가 저장되면, 바로하둡으로올리기
+        client_hdfs = InsecureClient("http://master:yourport", user="username",timeout=1) #유저네임과 포트는 알아서 설정에맞게넣으면된다.
+        try: #로그인된 상태라면 세션에저장된 id를 가져와서 .mkdir를 이용하여 디렉터리를만든다.
+            hdfs_dir_id=request.session['id']
+            try: 
+                client_hdfs.makedirs('/user/'+str(hdfs_dir_id))
+                client_hdfs.upload('/user'+'/'+hdfs_dir_id, uploaded_file_url,temp_dir='/user')
+            except:
+                pass
+        except: #로그인 안된상태라면 id의값을 게스트로지정
+            hdfs_dir_id='guest'
+            try: 
+                client_hdfs.makedirs('/user/'+str(hdfs_dir_id))
+                client_hdfs.upload('/user'+'/'+hdfs_dir_id, uploaded_file_url,temp_dir='/user')
+            except:
+                pass
 ```
 
 
