@@ -658,5 +658,6 @@ timeout을 코드에서 삭제하면 ConnectionPool 오류를 반환한다.
                 pass
 ```
 
+Django에서 DB에 ID와 경로, 이미지를 저장하는 과정에서 하둡에도 같이 저장하는걸로 처리했다.
 
 
