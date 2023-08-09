@@ -568,3 +568,154 @@ GCP에 구축되어있는 세개의 카프카서버의 로컬의 VS코드에 연
 또한, 자동완성기능 등 을 이용하여 명령어를 입력하면, 데이터가 프로듀서가 가져온 데이터를 컨슈머가 실시간으로 소비하는것도 확인이 가능하다.
 
 ```
+
+## 파이썬으로 카프카와 연동하여 컨슈머 조작하기
+
+
+[kafka-pyton-doc](https://kafka-python.readthedocs.io/en/master/)
+
+위는 파이썬에서 kafka를 사용할수있게 도와주는 라이브러리의 공식문서.
+
+Kafka를 vscode와 연동해서 사용해도되지만, .py파일이나 java파일을 생성하여 원하는대로 프로듀서/컨슈머의 작동을 튜닝할수있다.
+
+파이썬으로 프로듀서 작동 파일과 컨슈머 작동파일을만들어서 작동테스트를해본다.
+
+먼저 파이썬에서 kafka 라이브러리를 설치한다.
+
+```python
+
+pip install kafka-python
+
+
+위의 라이브러리를 설치하였으면 이제 파이썬에서 불러와서 사용할수있다.
+코드를 작성해보자
+
+
+  from kafka import KafkaProducer
+  from json import dumps
+  import time
+
+  # kafkaproducer안에는 카프카의 정보와 메세지의 압축방식, 보낼방식,확인 등을
+  # 옵션으로 지정할수있다.
+  # acks=n -> 메세지가 잘 전달되었는지 확인하는 옵션 / compression_type -> 메세지 전달할때 사용하는 압축방식
+  # 부트스트랩서버 -> 메세지를 전달할 브로커들의 정보, value_serializer -> json파일을 전송을위해 바이트로 바꾸고 인코딩함
+
+  producer = KafkaProducer(acks=0, compression_type='gzip',bootstrap_servers=['kafka01:9092','kafka02:9092','kafka03:9092'],
+  value_serializer=lambda x: dumps(x).encode('utf-8'))
+
+  # 데이터를 보내는데 걸리는 시간을 체크하기위해.
+
+  start = time.time()
+
+  for i in range(1000):
+      data = {'kafka_test' : 'test'+str(i) }
+      producer.send('py_test', value=data) # 토픽명 py_test, 토픽안의 값들은 data의 값
+      producer.flush() # 데이터를 비우는작업
+
+  print('send seepd : ', time.time() -start)
+
+
+>python kafka_test.py
+
+send seepd :  0.4088451862335205
+
+▲100개의 데이터를 프로듀서에 보내는데 걸린 시간
+
+# 컨슈머로 실시간으로 확인해본 결과
+
+$KAFKA_HOME/bin/kafka-console-consumer.sh --bootstrap-server kafka01:9092,kafka02:9092,kafk
+a03:9092 --topic py_test --from-beginning
+
+{"kafka_test": "test0"}
+{"kafka_test": "test1"}
+{"kafka_test": "test2"}
+{"kafka_test": "test3"}
+{"kafka_test": "test4"}
+{"kafka_test": "test5"}
+{"kafka_test": "test6"}
+{"kafka_test": "test7"}
+{"kafka_test": "test8"}
+{"kafka_test": "test9"}
+{"kafka_test": "test10"}
+{"kafka_test": "test11"}
+            .
+            .
+            .
+            .
+            .
+{"kafka_test": "tset99"}
+
+
+▲ragne(100)이었으므로 0-99까지 총 100개의 데이터가 토픽에 정상적으로 넣어진걸 확인할수있다.
+
+
+## 1000개의 데이터도 전송시켜본다.
+
+send seepd :  0.707979679107666
+
+
+{"kafka_test": "tset999"}
+
+다른 콘솔에 컨슈머를 미리 켜놓으면, 실시간으로 데이터가 쌓이는걸 확인할수도있다.
+
+
+## 컨슈머 파일도 만들어보자
+
+프로듀서로 데이터를 수집하였으면 읽어오는 컨슈머파일도 만들수있다.
+
+하지만 여기서 컨슈머파일로 데이터를 읽어오지않고 다른 방식으로 전송,읽는 방법이있다.
+대표적인예로 엘라스틱서치의 '로그스태시', '텔레그래프'등이있다.
+
+
+트위터 api가 정상적으로 작동한다면, 프로듀서를 통해 트위터에서 수집된 데이터를 로그스태시를 사용하여 엘라스틱서치에 적재하고 시각화하는것도 진행해봐야겠다.
+
+
+토픽에 들어있는 데이터를 읽어오는 컨슈머파일을 만들어보자.
+
+  from kafka import KafkaConsumer
+  from json import loads
+
+
+  consumer = KafkaConsumer(
+      'py_test', #읽어올토픽명
+      bootstrap_servers=['kafka01:9092','kafka02:9092','kafka03:9092'],
+      auto_offset_reset='earliest',
+      enable_auto_commit=True,
+      group_id='my-group',
+      value_deserializer=lambda x : loads(x.decode('utf-8')),
+      consumer_timeout_ms=1000
+  )
+
+  print('start get consumer list')
+
+  for message in consumer:
+      print("topic: %s, partition: %d, offset: %d, key: %s , value: %s" % 
+      (message.topic, message.partition, message.offset,message.key,message.value)
+      )
+
+  print('end get consumer list')
+
+# 결과 
+
+topic: py_test, partition: 0, offset: 0, key: None , value: {'kafka_test': 'test0'}
+topic: py_test, partition: 0, offset: 1, key: None , value: {'kafka_test': 'test1'}
+topic: py_test, partition: 0, offset: 2, key: None , value: {'kafka_test': 'test2'}
+topic: py_test, partition: 0, offset: 3, key: None , value: {'kafka_test': 'test3'}
+topic: py_test, partition: 0, offset: 4, key: None , value: {'kafka_test': 'test4'}
+topic: py_test, partition: 0, offset: 5, key: None , value: {'kafka_test': 'test5'}
+topic: py_test, partition: 0, offset: 6, key: None , value: {'kafka_test': 'test6'}
+topic: py_test, partition: 0, offset: 7, key: None , value: {'kafka_test': 'test7'}
+topic: py_test, partition: 0, offset: 8, key: None , value: {'kafka_test': 'test8'}
+topic: py_test, partition: 0, offset: 9, key: None , value: {'kafka_test': 'test9'}
+topic: py_test, partition: 0, offset: 10, key: None , value: {'kafka_test': 'test10'}
+.
+.
+.
+
+
+py_test라는 토픽은 아까 프로듀서.py파일을 통해 100개의 데이터를 json형태로 넣어놨고, 그것을 읽어오는 컨슈머.py파일을 만들어보았다.
+
+이렇게 프로듀서로 수집한 실시간데이터를 토픽으로만들어 컨슈머에서도 실시간으로 쌓이는것을 확인할수있다.
+또한 이렇게 쌓인 토픽을 데이터베이스에 저장하는것도가능하다. 단, 카프카가 json형태로 데이터를 쌓기때문에 nosql인 몽고디비나 엘라스틱서치(로그스태시로 엘라스틱서치에쌓는방식)이 편할수있다.
+
+```
