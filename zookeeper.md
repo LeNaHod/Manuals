@@ -427,6 +427,44 @@ jps kafka
 카프카를 실행하기위해서는 주키퍼가 실행되고있어야한다.
 카프카와 주키퍼를 데몬으로 실행하고나서 테스트용으로 토픽을 생성해보자.
 
+# 토픽과 프로듀서, 그리고 컨슈머
+
+토픽은 레코드의 집합체라고생각할수있다.
+
+레코드 = 데이터 라고 생각하면되고, 즉 데이터가 모여서 덩어리로 저장되어있는게 토픽이다.
+
+그럼 프로듀서는 무엇일까? 레코드들을 컨슈머에게 메세지형태로 보내주는 역할을 한다고 생각하면된다.
+
+또한 여기서 중요한것은 '프로듀서'로 전송되는 레코드의 값은 UTF-8기반 바이트로 변환되고, 이 형식으로 직렬화가 이루어진다.
+
+즉, 스트링 타입이 아닌 친구들은 직렬화해서 전송할수없기때문에, 카프카 어플리케이션(.py, .java) 파일로 직접 튜닝하여 사용해야한다.
+
+※ 프로듀서나 컨슈머 파일을 튜닝할때  "value_deserializer=lambda x : loads(x.decode('utf-8'))" 이 코드를 많이추가하는데, 이것이 밸류값을 스트링으로 직렬화시키는 작업을하는것.
+
+※ 그래서 위와같이 카프카 어플리케이션을 이용할때는 보통 프로듀서-컨슈머 모두 json형식으로 데이터를 전송하기때문에 json 타입으로 보내주면 오류가 발생하지않지만, 터미널에서 직접 kafka-console-producer.sh를 이용하여 밸류값만을 토픽에 추가할때 일반 문자열만 메세지로 전송한다면 해당 코드부분에서 오류가난다.
+
+```
+아래와 같은 코드를 컨슈머 파일에 추가한다면, **json**형식에 맞춰서 데이터에넣어줘야한다.
+
+`value_deserializer=lambda x : loads(x.decode('utf-8'))`
+
+
+![카프카 실시간토픽쌓이는거 확인](./Kafka_zookeeper/kafka_console.sh_producer.PNG)
+
+▲왼쪽 터미널은 GCP에서 구동중인 카프카01서버에서 실행한 **프로듀서**, 오른쪽 VSCODE의 터미널은 GCP에서 구동중인 카프카02서버에서 실행한 **컨슈머**.
+
+카프카01에서 실행한 프로듀서.py파일로 1-50까지의 밸류값만 가지는 json형태의 레코드를 넣어 토픽을 생성했고, 이후 **Kafka-console-producer.sh** 로 메세지 밸류만 json형식으로 보내보았다.
+
+그결과, 위의 코드가있는경우 json형식 외의 포맷이들어오면 컨슈머.py파일에서 오류를발생시킨다.
+
+튜닝하지않은 컨슈머.sh는 바이트로만직렬화하기때문에 스트링이 아닌 타입은 전송하기 어려웠다.
+
+```consumer_timeout_ms=1000```
+
+또한 위의 코드를 주석처리했을때, 컨슈머는 사용자가 따로 정지명령을 내리지않는이상 프로듀서와의 연결을 지속적으로 유지하며, 프로듀서로 들어오는 새로운 메세지들을 지속적으로 수신하는걸 확인할수있었다.
+
+
+```python
 
 # 토픽생성 확인
 
@@ -491,6 +529,21 @@ delete.topic.enable = true
 ※만약 삭제명령어를 이용했을시 에러가 발생한다면 위의 설정값을 추가해주자. 나는 추가해주지않았지만 삭제가 잘 이루어졌다.
 
 이후 logs 파일에서 삭제가 잘 이루어졌는지 확인하고 같은이름으로 새로운 토픽을 생성해본다.
+
+# 프로듀서로 토픽내용 추가하기
+
+kafka-console-producer.sh --bootstrap-server kafka01:9092.. --topic 토픽명
+
+## 밸류값만을 메세지로 전송하기
+
+kafka-console-producer.sh --bootstrap-server kafka01:9092.. --topic 토픽명
+
+## 키와 밸류 모두 메세지로 전송하기
+
+kafka-console-producer.sh --bootstrap-server localhost:9092 ---topic 토픽명 --property "parse.key=true" --property "key.separator=:"
+
+※ property "parse.key=ture" ->레코드를 전송할때 키를 추가할수있다.
+※ property "key.separator=:" -> 키와 밸류를 구분하는 구분자 지정. 기본값은 탭임(\) 
 
 # 브로커 확인
 
@@ -609,7 +662,7 @@ pip install kafka-python
 
   for i in range(1000):
       data = {'kafka_test' : 'test'+str(i) }
-      producer.send('py_test', value=data) # 토픽명 py_test, 토픽안의 값들은 data의 값
+      producer.send('py_test', value=data)#patitions=n -> 특정파티션을 지정할때 토픽명 py_test, 토픽안의 값들은 data의 값, 
       producer.flush() # 데이터를 비우는작업
 
   print('send seepd : ', time.time() -start)
@@ -658,6 +711,8 @@ send seepd :  0.707979679107666
 
 다른 콘솔에 컨슈머를 미리 켜놓으면, 실시간으로 데이터가 쌓이는걸 확인할수도있다.
 
+※단, 저장되는 파티션은 랜덤(브로커가 만약3개있다면 3개중 랜덤)이므로, 특정 파티션으로보내고싶을때는 파티션을지정해줘야한다.
+토픽 내부에 파티션이있다.
 
 ## 컨슈머 파일도 만들어보자
 
