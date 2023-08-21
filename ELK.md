@@ -236,6 +236,15 @@ Git bash를 실행시키고 ll(소문자L)명령어로 해당파일의 권한을
 ## 엘라스틱 서치를 외부에서도 접속할수있게 해보자.
 
 엘라스틱 서치는 .yml파일에 network.host의 값을 설정하는 순간, 개발자모드 -> 운영모드가된다. 그러면 여러 부트스트랩체크를 하게되는데
+<mark>단 , 주의할점은 .yml문법은 꼭 : 이후 공백이한칸있어야하고, 설정을 마치고 마지막줄 아래에도 한줄 공백이있어야하는것같다.</mark>
+
+왜냐하면
+  1 설정1
+  2 설정2
+  3 설정3
+  ###엘라스틱주석내용###
+
+위와같은식으로 .yml파일안에 작성을해놓았더니, 오류를만났다.(URL에 연결할수없다는 오류)
 
 **network.host에만 값을 설정했을때 어떤 오류가 생기는지 알아본다.**
 
@@ -442,7 +451,7 @@ config/elasticsearch.yml파일에 아래내용 추가
 
     ./bin/elasticsearch-certutil cert \
     --ca 공개키이름(위에서 생성한) \
-    --dns 등록할 dns들 \
+    --dns 클러스터링할 노드의 호스트명들(=노드1,2,3의 dns) \
     --ip dns에 등록한 dns의 ip들 \ (GCP는 인스턴스 내부IP)
     --out config/certs/지정하고싶은이름.p12
 
@@ -554,6 +563,7 @@ elasticsearch-setup-passwords를 이용하여 password를 설정하자.
 위와 같이 입력하여 엘라스틱서치 서버에 잘 접속이되면 성공.
 
 ★같은 클러스터로 묶여있는 모든 노드들에 같은 패스워드가 지정이된다. 클러스터에 패스워드가 저장이되기때문이다. (위의 users useradd는 노드에만 적용하는것이라서 같은 클러스터에있는 다른 노드들에 적용X)
+
 
 ### users useradd도 이용해보자
 
@@ -717,7 +727,7 @@ export NVM_DIR="$([ -z "${XDG_CONFIG_HOME-}" ] && printf %s "${HOME}/.nvm" || pr
     - default (built-in) aliases: node, stable, unstable, iojs, system
     - custom aliases you define with `nvm alias foo`
 
-위와같이 다른내용들과 함께 나오면 제대로 동작중이다. 이제 버전에 맞는 ndoe를 설치해보자
+위와같이 다른내용들과 함께 나오면 제대로 동작중이다. 이제 버전에 맞는 node를 설치해보자
 
 >nvm install 10.22.1(kibana node버전)
 
