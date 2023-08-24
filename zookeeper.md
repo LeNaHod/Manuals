@@ -774,3 +774,101 @@ py_test라는 토픽은 아까 프로듀서.py파일을 통해 100개의 데이�
 또한 이렇게 쌓인 토픽을 데이터베이스에 저장하는것도가능하다. 단, 카프카가 json형태로 데이터를 쌓기때문에 nosql인 몽고디비나 엘라스틱서치(로그스태시로 엘라스틱서치에쌓는방식)이 편할수있다.
 
 ```
+
+# 트위터 API로 실시간 스트리밍기능을 다시 이용해보자.
+
+이슈가있어서 작동하지않았던 트위터 API를 다시 이용해보기로했다.
+그런데 꽤 오랜시간이 지나서들어가보니 뭔가 많이 업데이트된것같아서 새로 연구해야겠다..
+
+트위터에서 실시간 으로 수집한 트윗은 카프카 토픽으로 보낼것이고, 카프카에서 로그스태시를이용해  엘라스틱서치에 적재할 예정이다.
+물론 바로 로그스태시로 엘라스틱서치에 적재해도되지만.. 카프카를 이용해보겠다.
+
+일단 Python에서 트위터를 이용하기위해 라이브러리를 설치해줘야한다
+
+```pip install tweepy```
+
+  WARNING: The script normalizer is installed in '/home/-/.local/bin' which is not on PATH.
+    Consider adding this directory to PATH or, if you prefer to suppress this warning, use --no-warn-script-location
+
+
+설치를 하다가 위와같은 경고메세지를 받았는데 해당 경고메세지에서 알려주는 경로가 쉘이 인식할수없는 경로이기때문에 export PATH를 통해 경로를 지정해줘야한다.
+
+아니면 경고메세지에서 안내해주듯 --no-warn~ 옵션을 사용하여 설치해도 사용하는데는 무방하였다.
+
+```pip install tweepy --no-warn-script-location```
+
+그리고 트위터에서 가져오고싶은 키워드를 선정하여 카프카로 전송하는 python 파일을 만든다.
+
+<u>import 에러에대해서는 아래 글을 참고하였다.</u>
+
+[트위터API_V2_stream](https://devkhk.tistory.com/37)
+
+
+```python
+
+from tweepy import StreamRule,StreamingClient
+from kafka import KafkaProducer
+from kafka.errors import KafkaError
+import json
+from json import dumps
+#from tweepy import OAuthHandler,Stream,StreamListener #1.1에서 사용되던것. 이젠 사용x
+
+# API Key
+consumer_api_key="" # 1.1에서 사용. 
+consumer_api_secret="" # 1.1에서 사용.
+access_token=""# 1.1에서 사용.
+access_token_secret=""# 1.1에서 사용.
+BEARER_TOKEN="" #api 2버전에선 해당 토큰만 사용
+
+# Kafka topic 생성
+# 바로 토픽을 생성하지않고 미리 생성해둔 토픽을 사용할것이다.
+
+kafka_topic="twittertest"
+
+#on_Data에 들어온 트윗을 컨슈머로 보내는 메소드를 가지고있는 클래스생성
+
+class StdOutListener(StreamingClient): #데이터가 들어오면 해당 메소드 실행
+    def on_data(self,data): # 정상적으로 작동할때
+        tw_data=json.loads(data)
+        tw_key_data={'Tweet':tw_data["text"]} #응답되어오는 josn포맷에서 text만 출력하여 tweet:text json형식으로 만든다.
+        producer.send(kafka_topic, value=tw_key_data) #카프카 토픽에 받아온 데이터를보냄
+        return True
+    def on_error(self,status): #오류가 발생했을시 오류메세지 출력
+        print(status)
+
+def delete_all_rules(rules):
+    # 규칙 값이 없는 경우 None 으로 들어온다.
+    if rules is None or rules.data is None:
+        return None
+    stream_rules = rules.data
+    ids = list(map(lambda rule: rule.id, stream_rules))
+    client.delete_rules(ids=ids)
+
+# 저장할 포맷과 Kafka 서버설정
+
+producer=KafkaProducer(acks=0,bootstrap_servers=['kafka01:9092','kafka02:9092','kafka03:9092'],
+value_serializer=lambda x: dumps(x).encode('utf-8'))
+#outlisten=StdOutListener() #1.1버전에서사용
+
+# 트위터랑 연동하는부분
+client = StdOutListener(BEARER_TOKEN)
+rules = client.get_rules()
+delete_all_rules(rules)
+client.add_rules(StreamRule(value="반려동물")) #키워드 필터링
+client.filter() #스트림 시작
+
+```
+
+위와같이 진행하였는는데 403오류가 계속나서 찾아본결과, api_v2의 권한 문제가있는것같다.
+트위터 포럼에서 올해 올라온 글을 찾았는데 무료버전은 자동 트윗 생성/삭제 그리고 특정사용자의 트윗을 가져올수있고 특정 검색어로 트윗을 가져오는것은 스트리밍 기능은 기업버전, 혹은 기본버전($100)에서만 사용할수있는것같다. 그리고 api_v1.1같은경우는 이제 완전히 중단되었다고한다.
+
+
+또한 tweepy 최신버전에서는 공식적으로 Stream,StreamListener 가 삭제되어서 사용할수없다.
+Stream,StreamListener는 StreamingClient 로 변경되었다.
+
+[tweepyDoc](https://docs.tweepy.org/en/v4.14.0/streamingclient.html)
+
+내가 코드를 잘못작성해서 오류가나는줄알고 정말 오래 삽질했는데 저번엔 이슈로발목잡더니 다시돌아오니 이젠 아예 문전박대를 당한상태이다... 트위터에서 무료버전으로 실시간으로 데이터를 받아올수없다니 매우 아쉬웠다.
+
+그렇다면 아쉬운대로 카프카와 엘라스틱서치를 연동시키는 작업을 진행해야겠다.
+
