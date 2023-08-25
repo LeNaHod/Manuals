@@ -3554,12 +3554,6 @@ output {
 
 ---------
 
-## Kibana로 CSV파일 가져오기
-
--
-
----------
-
 ## Kibana 인덱스 패턴생성
 
 Kibana를 처음 실행하면 Elasticsearch에 데이터가있어도, Kibana에서 볼수있는 또하나의 View를 생성해줘야 데이터를 볼수있다. Kibana인덱스 패턴을 기반으로 Kibana는 시각화자료를 만들기때문에, 인덱스패턴을 생성해줘야한다.
@@ -3752,9 +3746,48 @@ Max rows per page: 3
 
 
 
+## Kafak와 연동해보자.
+
+Kafka의 토픽 데이터를 logstash를 이용하여 elasticsearch로 넣어본다.
+사실 Kafka와 외부 DB를 연결하는 방법과 오픈소스 프로젝트들은 많다.
+굳이 logstash를 고집할필요없이 카프카 커넥터를 사용해된다. 반복적인 작업을할때는, 카프카 커넥터가 더 유용하다.
+logstash는 단발성 파이프라인에 더 적합한것같다.
+
+일단 나는 ELK스택을 이용하기로했으니 logstash를 사용하여 카프카에서 토픽데이터를읽어오는 conf파일을 만들어 카프카에서 데이터를 읽어올것이다.
+
+```bash
+
+input {
+    kafka {
+        bootstrap_servers => "your_host_name:9092,your_host_name02:9092,your_host_name03:9092"
+        topics => ["읽어올토픽"]
+        group_id => "토픽에 지정할 그룹아이디"
+        codec => json
+    }
+}
+output {
+    elasticsearch {
+        hosts => "http://ip:9030"
+        user => "your_id" #엘라스틱서치 보안설정시
+        password => "your_password" #엘라스틱서치 보안설정시
+        index => "elastic-kafka-%{+YYYY-MM-dd}"
+        document_type => "_doc"
+    }
+}
 
 
+```
 
+
+![카프카-로그스태시연결](./elk/elastic-logstash-kafak.PNG)
+
+
+![카프카-로그스태시-엘라스틱서치](./elk/elastic-kafak-result.PNG)
+
+
+로그스태시를 통해 카프카와 엘라스틱서치를 시킨 후, 카프카에서 프로듀서를 통해 데이터가 들어오면 위와같이 엘라스틱서치에 인덱스가 생성되고 그 카프카 토픽 데이터가 도큐먼트로 실시간 쌓인다.
+
+<mark>단, 로그스태시로 연동하기 이전 카프카 토픽에 들어있던 레코드(데이터)는 엘라스틱서치에 들오지않았다.</mark>
 
 
 
