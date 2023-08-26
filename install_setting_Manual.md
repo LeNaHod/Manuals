@@ -967,7 +967,7 @@ end of file안에 아래내용 입력
 
 #~~~~
 
-계정명              -       nofile         655535
+계정명              -       nofile         65535
 
 #end of file
 
