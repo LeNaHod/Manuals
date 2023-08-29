@@ -209,9 +209,9 @@ namenode, datanode, naodemanager , secondaryNameNode, ResourceManager 가 최소
 
 ## 5.Spark 설치 & 설정
 
-**스파크 3.2.2를 다운로드받자**
+**스파크 3.3.3를 다운로드받자**
 
-wget https://dlcdn.apache.org/spark/spark-3.3.1/spark-3.3.1-bin-without-hadoop.tgz
+wget https://dlcdn.apache.org/spark/spark-3.3.3/spark-3.3.3-bin-without-hadoop.tgz
 
 **압축해제&심볼릭 링크생성**
 
@@ -232,6 +232,13 @@ export PATH=$PATH:$SPARK_HOME/bin:$SPARK_HOME/sbin
 
 2.cp workers.template workers >이부분은 hadoop과다름!
 
+sudo vi workers
+
+#localhost 로컬호스트로 돌리고싶으면 worker설정 생략 O
+worker1.name
+worker2.name
+
+
 3.cp spark-env.sh.template spark-env.sh
 
 4.vim spark-env.sh 
@@ -246,6 +253,19 @@ export JAVA_HOME=/home/계정명/java
 export PYSPARK_PYTHON=/usr/bin/python3
 export PYSPARK_DRIVER_PYTHON=/usr/bin/python3
 
+
+#선택
+
+export SPARK_HOME=/home/napetservicecloud/spark
+export SPARK_CONF_DIR=$SPARK_HOME/conf
+export SPARK_MASTER_WEBUI_PORT=18080(기본8080이지만 앱실행시 충돌방지를위해)
+
+# 분산환경관련
+export SPARK_WORKER_INSTANCES=2 # 워커의갯수
+export SPARK_WORKER_CORES=1 #워커에 할당할 코어갯수
+export SPARK_WORKER_MEMORY=1g #워커에 할당할 메모리갯수
+   
+
 5.spark-defaults.conf
 
 ★cp spark-defaults.conf.template spark-defaults.conf 를 실행하여
@@ -259,11 +279,52 @@ vim spark-defaults.conf
 
 spark.master                              yarn
 
+spark.eventLog.enabled  true
+spark.eventLog.dir      /home/napetservicecloud/spark/logs #추후 mkdir을통해생성
+
 6.pyspark 실행
 
-start-all.sh -> pyspark -> spark로고 확인 / master:yarn확인
+spark/sbin/start-all.sh -> pyspark -> spark로고 확인 / master:yarn확인
+
+7.워커등록 및 웹UI확인
+
+# 마스터 먼저 실행
+spark/sbin/start-master.sh 으로 마스터를 먼저 실행
+
+★반드시 pyspark를 실행하기전, spark가 실행되고있어야하고 spark가실행되려면 hadoop이실행되고있어야함.
+
+이후 생성된 마스터의 URL (spark://~~~:7077 형식)을 복사한다.
+
+# 워커실행
+
+spark/sbin/start-worker.sh [복사한masterURL]
+
+단,해당작업을할때는 워커로사용하고싶은 서버로 이동해서 사용한다.
+(만약같은 서버,인스턴스에서 사용시 동일한 컴퓨터 내부에서 메모리를할당하고 분산처리를하게된다.)
+
 ```
-## 6.어플리케이션 생성을 위한 pyspark설치
+
+![Standalone_spark_webUI](./spark분산.PNG)
+
+<u>위는 같은서버내에서 스파크 분산처리를 실행한것. 워커가 동일한 아이피를 가지고있다.</u>
+
+## 6. 다른 인스턴스를 spark의 워커로 실행해보자
+
+아까 위에서 편집했던 worker.sh 파일을 보면 분명 워커로 사용하고싶은 서버의 ip나 호스트네임을 등록해놨을것이다.
+
+하지만 당연하게도 워커로 사용하고싶은 서버나 인스턴스에도 당연히 스파크가 설치되어있어야한다.
+
+```bash
+
+spark/sbin 아래에 
+
+start-worker.sh [마스터url] 은 해당 명령어를 이용하는 서버를 마스터에 워커로 등록하는것같다.
+
+하지만, start-workers.sh 를 실행시켰더니, worker파일에 등록해놨던 서버들을 찾아간다.
+
+
+```
+## 7.어플리케이션 생성을 위한 pyspark설치
 
 어플리케이션 생성 == .py생성 
 
@@ -273,7 +334,7 @@ spark릴리즈 버전에 맞는 pyspark설치
 1. cd spark
 -> 계정@ubuntu:~/spark$ 으로이동해서
 
-2. cat RELELASE 
+2. cat RELEASE 
 ->현재 spark버전확인.
 
 3. pip install pyspark == 현재스파크버전(위의 spark설치버전에는 3.2.2로설치하는것을권장)
@@ -669,6 +730,23 @@ testDf.show()
 |  2| spark|
 +---+------+
 
+  아래처럼 작성해서 쉘에서 확인해도된다.
+  import mysql.connector
+  from pyspark.sql import SparkSession
+
+  # spark 세션 연결
+  spark = SparkSession.builder.config("spark.jars", "mysql-connector-java-8.0.26.jar") \
+      .master("local").appName("PySpark_MySQL_test").getOrCreate()
+      
+  df = (spark
+      .read
+      .format("jdbc")
+      .option("url", "jdbc:mysql://localhost:3306/TestDB")
+      .option("driver", "com.mysql.jdbc.Driver")
+      .option("dbtable", "{Table-NAME}")
+      .option("user", "root").option("password", "******")
+      .load())
+
 아까 mysql에서 저장한 정보가 위와같이 나오면 정상적으로 spark와 mysql이 연결되었음을 알수있다.
 
 ★mysql포트번호 확인법:
@@ -713,12 +791,20 @@ source ~/.bashrc 로 적용!
 2. pip로 에어플로우를 설치해보자
 
 pip install apache-airflow
-->동작해서 버전이안맞으면 빨간줄로 오류가 발생. 대부분 업그레이드 오류이므로 잘 읽어보고 해당 라이브러리를 업그레이드하면됨
+->동작해서 버전이안맞으면 빨간줄로 오류가 발생. 대부분 업그레이드 오류이므로 잘 읽어보고 해당 라이브러리를 업그레이드하면됨.
+
+아니면 버전을 직접 지정할수도있음.
+
+pip install "apache-airflow[celery]==2.2.3" --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-2.2.3/constraints-3.9.txt"
+
+-> airflow버전은 2.2.3, 파이썬버전은 3.9라는것을 의미한다. 
+
+[celery]는 airflow 분산처리를위해 워커역할을하는 비동기 작업큐이다. 주로 레딧과 레빗mq와 함께쓴다.
+
 
 pip install -U requests
 ->설치도중 requests 업데이트 오류가나면, 이거 실행하고 에어플로우를 pip로 재설치
 
-##(export AIRFLOW_HOME=~/airflow ->보류)##
 
 3. 기본DB를 MYSQL로바꾸자
 
