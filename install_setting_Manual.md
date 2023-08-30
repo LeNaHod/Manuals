@@ -814,6 +814,25 @@ pip install apache-airflow-providers-mysql
 
 mysql -u 계정명 -p -> 위의 인스톨이끝난 후 mysql접속
 
+`에러`
+   pip install mysqlclient  와 pip install apache-airflow-providers-mysql, pip install apache-airflow-providers-apache-hdfs 설치가안될때
+
+      Specify MYSQLCLIENT_CFLAGS and MYSQLCLIENT_LDFLAGS env vars manually
+      [end of output]
+
+    note: This error originates from a subprocess, and is likely not a problem with pip.
+    error: subprocess-exited-with-error
+
+    위와같은 에러가 뜨며 패키지가 설치가안될때, 잘읽어보면  pkg-config를 설치해야한다고나온다.
+
+    그러므로 pkg-config를 먼저 설치해주고 오류가났던 패키지를 다시 설치해주면 정상적으로 설치가된다.
+
+    ★ sudo apt install default-libmysqlclient-dev pkg-config -y
+
+(오류날시)
+★ sudo apt install default-libmysqlclient-dev pkg-config -y
+
+
 
 2. ★계정생성과 권한설정!
 
@@ -858,7 +877,7 @@ load_examples = True
 sql_alchemy_conn = sqlite:////home/리눅스계정명/airflow/airflow.db
 ->sql_alchemy_conn = mysql://airflow:비밀번호@localhost:3306/airflow 
 mysql의 접속 정보이다. airflow는 sql 데이터베이스명, localhost:3306은 접속경로
-접속하려는 db정보가 다른경우 airflow부분 대체가능
+접속하려는 db정보가 다른경우 airflow부분 대체가능 localhost부분은 ip이다.
 
 
 #428번째
