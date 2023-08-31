@@ -549,6 +549,16 @@ kafka-console-producer.sh --bootstrap-server localhost:9092 ---topic 토픽명 -
 
 $KAFKA_HOME/bin/kafka-broker-api-versions.sh --bootstrap-server your.host.name:9092
 
+# 카프카 컨슈머 그룹아이디 생성
+
+그룹아이디가있으면, 여러 인스턴스에서 작동중인 컨슈머 모두가 메세지를 소비하지않고 카프카라 메세지를 자동분배하여 한개의 컨슈머에서만 메세지를 소비할수있다.
+
+$KAFKA_BIN/kafka-console-consumer.sh --bootstrap-server your.host.name:9092.. --topic [토픽 이름] --group [그룹 이름]
+
+# 카프카 그룹아이디 확인
+
+$KAFKA_BIN/kafka-consumer-groups.sh --bootstrap-server kafka01:9092,kafka02:9092,kafka03:9092
+92 --describe --group [그룹 이름]
 
 # 카프카 프로듀서로 데이터를 입력하고 컨슈머로 출력하기
 
@@ -556,9 +566,9 @@ $KAFKA_HOME/bin/kafka-broker-api-versions.sh --bootstrap-server your.host.name:9
 
 ###kafka01에서 진행
 
-$KAFKA_HOME/bin/kafka-console-producer.sh \
-> --broker-list kafka01:9092,kafka02:9092,kafka03:9092 \
-> --topic test
+$KAFKA_BIN/kafka-console-producer.sh \
+--broker-list kafka01:9092,kafka02:9092,kafka03:9092 \
+--topic test
 >a
 >b
 >c
@@ -572,9 +582,9 @@ $KAFKA_HOME/bin/kafka-console-producer.sh \
 ###kafka02에서 진행
 
 $KAFKA_HOME/bin/kafka-console-consumer.sh \
-> --bootstrap-server kafka01:9092,kafka02:9092,kafka03:9092 \
-> --topic test \
-> --from-beginning
+--bootstrap-server kafka01:9092,kafka02:9092,kafka03:9092 \
+--topic test \
+--from-beginning
 
 >a
 >b
