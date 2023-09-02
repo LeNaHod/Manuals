@@ -11,8 +11,12 @@ Airflow는 $AIRFLOW_HOME(default는 ~/airflow)의 dags 폴더에 있는 dag file
 - airflow = 1 -> 2 에서 1이실패한다면 1의 작업이완료될때까지 2는기다린다.
 
 
+<u>참고</u>
 
 [airflow기초 개념](https://teki.tistory.com/6)
+
+[airflow기초 문법](https://magpienote.tistory.com/194)
+
 
 ## GCP 환경에 Airflow를 설치하고 분산크롤링하기
 
@@ -184,7 +188,7 @@ df -h 를 통해 디스크를확인해보니 used가 100%였다.
 
 이제 다시 에어플로우를 설치해주자
 
-pip install "apache-airflow[celery]==2.2.3" --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-2.2.3/constraints-3.9.txt"
+pip install "apache-airflow[celery,redis,kafka,mysql,spark,elasticsearch,hdfs]==2.7" --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-2.7/constraints-3.9.txt"
 
 -> airflow버전은 2.2.3, 파이썬버전은 3.9라는것을 의미한다. 
 
@@ -330,7 +334,7 @@ dag_dir_list_interval = 300
 
 -> dag_dir_list_interval = 60 으로 변경해주자
 
-#133번째
+#1333번째
 dag_default_view = grid
 -> dag_default_view = graph
 
@@ -489,10 +493,11 @@ sql_insert_data = """
 """
 
 
-with DAG(
+with DAG( #데코레이터를 import시켜 @dag,@task 와 같이 사용가능
     'connect_to_local_mysql', #dag id
     default_args = default_args,
-    description = """
+    description = #description=동작내용 묘사 정의. 없어도 무관. 메모같은기능
+    """ 
         1) create 'employees' table in local mysqld
         2) insert data to 'employees' table
     """,
@@ -531,13 +536,125 @@ flush privileges;
 이제 마스터와 워커들을 연결해주기위해 celery를 설치하고 노드들을 연결하는 설정을해주자.
 
 
-## celery 설치 및 Airflow worker노드연결
+## celery,Redis 설치 및 Airflow worker노드연결
+
+```bash
+
+설치
+    [마스터,워커1,워커2 공통]
+    pip install Redis
+
+    pip install celery
+
+    #제대로 설치가되었는지 확인용으로
+
+    celery --version
+
+    #redis는 직접다운로드받는방식과 아래처럼 apt를 이용하는방법이있다. 나는 apt를 이용하여 redis-server를 설치한다.
+
+    sudo apt-get install redis-server -y
+
+    #redis를 apt로 설치를진행할시, 실행까지 진행된다. 그러니 설치가끝나고 실행되고있는지 확인해보자
+
+    sudo service redis status
+    (Active: active (running)) 확인
+
+    netstat -an |grep 6379
+
+    tcp        0      0 127.0.0.1:6379          0.0.0.0:*               LISTEN
+    tcp6       0      0 ::1:6379                :::*                    LISTEN
+
+    이것은 reids의 기본설정이다. 기본적으로 redis의 설정파일에는 
+    ipv4 : 127.0.0.1 / ipv6 : ::1로, 로컬시스템내에 또다른 클라이언트-서버 관계를 구성해놓은 루프백으로 되어있다.
+    그러므로 다른 서버에서 redis에 접근하거나 airflow에서 localhost외에 접근하게하고싶으면 conf파일을 찾아 bind 부분에 ip를 설정해주면된다.
+
+    redis의 실행을 확인했으면 테스트를해보자
+
+    cd /usr/bin # redis가 설치되어있는곳.  redis-benchmark/redis-check-aof/redis-check-rdb/redis-cli/redis-server 등이 있다.
+    sudo redis-cli #cli로 실행
+    
+    
+    127.0.0.1:6379> #redis를 실행해보면 기본포트는 6379번으로 지정되어있고 아무런반응이없다.
+
+    #ping을입력하여 redis가 실행되고있는지 확인한다. ping을 입력하면 PONG이라고 메세지가온다.
+    127.0.0.1:6379> ping 
+    PONG
+    
+    #SET/GET을 이용하여 메세지를 송/수신해보자
+
+    127.0.0.1:6379> set bluedeveloper gcp_redis_hi
+    OK #SET으로 데이터를보내면 대답이돌아옴
+
+    127.0.0.1:6379> get bluedeveloper
+    "gcp_redis_hi" #GET으로 Redis에 보낸 메세지를 받아올수있다.
+
+    redis의 ip설정을 바꿔주자. conf파일은 아래와 같은 경로에있다.
+
+    /etc/redis/redis.conf
+
+    # 허용가능한 ip를 바꿔주자
+    # [master필수, 워커1,2 선택.] broker를 master로뒀기때문에 나는 워커1,2의 설정은 건드리지않았다.
+
+    #bind 127.0.0.1 ::1 (기본)
+    #bind 0.0.0.0 (모든외부접속허용)
+    bind host_name1 host_name2 host_name3 ...(,로 구분하지않고 공백으로 구분. 저장한 갯수만큼의 호스트에서 접속가능)
+
+    # 접속오류가나지않는지 확인
+
+    airflow celery flower
+
+    flower의 경우 원래 worker들을 먼저 실행해야 경고가뜨지않는다.
+    하지만 우리는 redis접속오류가 나지않는지 확인할것이기때문에 경고를무시하고 오류가안뜨는지 확인한다.
+
+기본적인 동작 테스트는 끝났으니 이제 airflow의 cfg파일을 수정하고 celery로 인스턴스를 이어주자.
+
+    vi airflow.cfg
+
+    # redis 설정
+
+    broker_url = redis://host_name:port
+
+    스케줄러와 워커가 서로 통신할 redis의 호스트명과 reids의 포트명을 작성해주면된다.
+
+    result_backend = db+mysql+mysqlconnector://계정명:비밀번호@host_name:port/db명
+
+    워커들의 결과를 저장할 db를지정하는 부분이다. 나는 sql_alchemy_conn에서 사용한 airflow전용 db에 결과를 저장할것이므로, sql_alchemy_conn과 같은 값을 사용하였다.
+
+    # flower port 설정
+
+    flower_port = 5555 -> flower_port = 15555
+    워커들에도 모두 airflow.cfg파일을 수정해줬으면 실행해본다.
+
+    # node1(master)는 스케줄러+웹서버+flower
+
+    airflow webserver -D
+    airflow scheduler -D
+    airflow celery flower -D
+
+    # [워커1, 2에서]
+    ## -q = 큐 이름지정. 없어도 실행하는데무관 / -D = 데몬으로실행
+
+    airflow celery worker -q q_name1 -D 
+    airflow celery worker -q q_name2 -D
+
+
+위와같이 실행하고 워커들이 잘붙는지 flower에 들어가서 확인해본다.
+
+```
+
+![flower_web_ui](./airflow/airflow_celery.PNG)
+
+워커들이 잘 붙은것을 볼수있다.
+
+이제 정상적으로 작동하는지 확인하기위해 위에서 간단히 Mysql에 테이블을 생성하는 워크플로우를 약간변형하여 병렬처리가되는지 확인해본다.
+
+
+```python
 
 
 
 
-
-
+```
 
 
 
