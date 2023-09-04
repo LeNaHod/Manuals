@@ -445,8 +445,8 @@ from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
 
 default_args = { #보통 누가만들었는지, START_DATE는 언제인지 정의함.생성에관한정보
     'owner' : 'gcp_master' #DAG를 누가만들었는지, 생성자가누구인지 알리는것
-    'depends_on_past': False,
-    'retires': 1,
+    'depends_on_past': False, #과거에 실패한 task인스턴스들을 실행할것인지 여부
+    'retires': 1, # task가 실패했을때 재시도할 횟수
     'retry_delay': timedelta(minutes=5),
     'conn_id' : 'mysql_test'
 }
@@ -524,6 +524,8 @@ with DAG( #데코레이터를 import시켜 @dag,@task 와 같이 사용가능
 이로써 마스터1, 워커 1 , 워커 2 에 모두 airflow를 설치하였고 세개의 인스턴스 모두 같은 DB를 사용하게 설정하였다.
 
 그전에 현재 mysql에 연결되어있는 airflow의 계정은 airflow의 정보들을 관리하기위해 airflow 전용 DB에만 접근/작업 권한이있기때문에 airflow 계정에 크롤링한 데이터를 적재할 DB에 접근할수있는 권한을 추가해준다.
+
+또한 아주당연한거지만 워커들이 master의 mysql에 접속할수있어야하기때문에, 워커인스턴스에도 mysql이 설치되어있어야한다.
 
 ```sql
 
@@ -632,10 +634,16 @@ flush privileges;
     airflow celery flower -D
 
     # [워커1, 2에서]
-    ## -q = 큐 이름지정. 없어도 실행하는데무관 / -D = 데몬으로실행
+    ## -q = 워커가 소비할 큐 이름 지정. 지정하지않을시 디폴트로 간주 / -D = 데몬으로실행
 
     airflow celery worker -q q_name1 -D 
     airflow celery worker -q q_name2 -D
+
+    ※기본적으로 airflow의 큐관련 설정을 건드리지않았다면, 스케줄러는 디폴트 라는 이름을 가진 큐에 작업명령을내리게된다.
+    고로, 큐를 따로 설정하지않은상태로 worker의 큐 이름을 q_name1이라고 지정하게된다면 redis에는 q_name1이라는 키가 생성되게되고, 이 키 안에 스케줄러가 작업을 배치할때까지 일을안하고 놀게된다..(나도 알고싶지않았음)
+    그렇게되면 스케줄러는 디폴트큐에 작업을 쌓게되고 쌓인 작업은 워커들이 소비하지않기때문에 계속쌓이게되고 대기상태에빠진다.
+    
+    이 큐 설정에대해서는 아래에서 조금 더 알아본다.
 
 
 위와같이 실행하고 워커들이 잘붙는지 flower에 들어가서 확인해본다.
