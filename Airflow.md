@@ -1,5 +1,6 @@
 # Airflow를 알아보자
 
+
 Airflow는 $AIRFLOW_HOME(default는 ~/airflow)의 dags 폴더에 있는 dag file을 지속적으로 체크한다. 고로 보통 PYTHON으로 작성한 DAG파일들을 DAGS폴더안에 넣어 관리한다.
 
 - DAG안에 여러개의 Task가 존재할수있다. 
@@ -16,7 +17,6 @@ Airflow는 $AIRFLOW_HOME(default는 ~/airflow)의 dags 폴더에 있는 dag file
 [airflow기초 개념](https://teki.tistory.com/6)
 
 [airflow기초 문법](https://magpienote.tistory.com/194)
-
 
 ## GCP 환경에 Airflow를 설치하고 분산크롤링하기
 
@@ -338,6 +338,10 @@ dag_dir_list_interval = 300
 dag_default_view = grid
 -> dag_default_view = graph
 
+#1868번째 (선택)
+catchup_by_default = True
+->False
+
 airflow가 버전이 업데이트되면서 WEBUI의 기본 VIEW가 grid로 설정되어있다. 나는 그래프로보고싶으니 그래프로 바꿔준다.
 
 ```
@@ -597,7 +601,7 @@ flush privileges;
     # 허용가능한 ip를 바꿔주자
     # [master필수, 워커1,2 선택.] broker를 master로뒀기때문에 나는 워커1,2의 설정은 건드리지않았다.
 
-    #bind 127.0.0.1 ::1 (기본)
+    #bind 127.0.0.1 ::1 (기본) ::1은 ipv6
     #bind 0.0.0.0 (모든외부접속허용)
     bind host_name1 host_name2 host_name3 ...(,로 구분하지않고 공백으로 구분. 저장한 갯수만큼의 호스트에서 접속가능)
 
@@ -618,7 +622,7 @@ flush privileges;
 
     스케줄러와 워커가 서로 통신할 redis의 호스트명과 reids의 포트명을 작성해주면된다.
 
-    result_backend = db+mysql+mysqlconnector://계정명:비밀번호@host_name:port/db명
+    result_backend = db+mysql://계정명:비밀번호@host_name:port/db명
 
     워커들의 결과를 저장할 db를지정하는 부분이다. 나는 sql_alchemy_conn에서 사용한 airflow전용 db에 결과를 저장할것이므로, sql_alchemy_conn과 같은 값을 사용하였다.
 
@@ -642,7 +646,7 @@ flush privileges;
     ※기본적으로 airflow의 큐관련 설정을 건드리지않았다면, 스케줄러는 디폴트 라는 이름을 가진 큐에 작업명령을내리게된다.
     고로, 큐를 따로 설정하지않은상태로 worker의 큐 이름을 q_name1이라고 지정하게된다면 redis에는 q_name1이라는 키가 생성되게되고, 이 키 안에 스케줄러가 작업을 배치할때까지 일을안하고 놀게된다..(나도 알고싶지않았음)
     그렇게되면 스케줄러는 디폴트큐에 작업을 쌓게되고 쌓인 작업은 워커들이 소비하지않기때문에 계속쌓이게되고 대기상태에빠진다.
-    
+
     이 큐 설정에대해서는 아래에서 조금 더 알아본다.
 
 
@@ -659,9 +663,276 @@ flush privileges;
 
 ```python
 
+import pendulum
+from datetime import datetime, timedelta
+from email.policy import default
+from textwrap import dedent
+from airflow import DAG
+from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator
+
+kst = pendulum.timezone("Asia/Seoul")
+
+default_args = { 
+    'owner' : 'gcp_master', 
+    'depends_on_past': False,
+    'retires': 1,
+    'retry_delay': timedelta(minutes=5),
+    'conn_id' : 'mysql_test'
+}
+
+create_table = """
+    CREATE TABLE `reduce_table` (
+        `id` int(10) NOT NULL,
+        `name` varchar(50) NOT NULL,
+        `press` varchar(50) NOT NULL,
+    PRIMARY KEY (`id`)
+    );
+"""
+
+insert_data = """
+    insert  into `reduce_table`(`id`,`name`,`press`) values 
+        (101,'hadoop','apachehadoop'),
+        (102,'spark','apachespark'),
+        (103,'airflow','apacheairflow');
+"""
+
+add_data = """
+    insert  into `reduce_table`(`id`,`name`,`press`) values 
+        (104,'elastic','elk'),
+        (105,'kafka','apachekafka'),
+        (106,'zookeeper','apachezookeeper');
+"""
+
+with DAG(
+    'airflow_reduce_test',
+    default_args = default_args,
+    schedule = '@once',
+    start_date = datetime(2023, 9, 3, tzinfo=kst),
+    catchup = False,
+    tags = ['test','reduce','celery'],
+    description = """
+        1) t1 = create 'reduce_table' table in local mysqld
+        2,3_병렬처리) t2 = insert data to 'reduce_table' table 'id = 101~103' / t3 = insert data to 'reduce_table' table 'id = 104~106'
+    """
+
+)as dag:
+    t1 = SQLExecuteQueryOperator(
+        task_id="airflow_reduce_create_table",
+        sql=create_table
+    )
+
+    t2 = SQLExecuteQueryOperator(
+        task_id="airflow_reduce_insert_data",
+        sql=insert_data
+    )
+
+    t3 = SQLExecuteQueryOperator(
+        task_id = "airflow_reduce_add_data",
+        sql=add_data
+    )
+
+t1 >> [t2,t3]
+
+```
 
 
 
+![간단한병렬처리](./airflow/airflow_reduce.PNG)
+
+<mark>airflow의 web UI로 보면 Task의 흐름은 그래프와같다.</mark>
+
+conn에 등록해놓은 id의 데이터베이스에 t1에 작성한대로 테이블이 생겼는지, 
+t1 = 101~103 /  t2 = 104~106 의 데이터가 들어가져있는지 확인해본다.
+
+![간단한병렬처리결과](./airflow/airflow_mysql_reduce.PNG)
+
+<u>테이블과 데이터들이 잘 들어간것을 확인할수있다.</u>
+
+하지만 병렬처리를 수행할때 중요한 부분이있다.
+**바로 마스터인스턴스(web,scheduler만실행하는 인스턴스)에만 dag파일을 배포하면안된다는것이다.**
+한곳에만 dag파일을 업로드한다면 오류가발생하는것을 확인하였다.
+
+<mark>airflow를 구성하고 있는 모든서버의 동일한 위치, 동일한 이름으로 dag 파일이있어야지 실행된다.</mark>
+
+
+그럼 이제 큐를 지정하는방법을 알아보자. 큐를 이용하는 방법은 간단하다.
+그냥 DAG파일을 작성할때 해당 TASK를 처리할 큐의이름을 지정해주면된다.
+
+만약 worker1과worker2 인스턴스를 각각 q_name1, q_name2라는 이름을 주고 실행시킨다고 가정한다.
+
+```worker1 > airflow celery worker -q q_name1```
+
+```worekr2 > airflow celery worker -q q_name2```
+
+그리고 위의 DAG파일 예제를 이용해 큐를 지정해본다.
+
+```python
+....
+....
+
+with DAG(
+    'airflow_reduce_test',
+    default_args = default_args,
+    schedule = '@once',
+    start_date = datetime(2023, 9, 3, tzinfo=kst),
+    catchup = False,
+    tags = ['test','reduce','celery'],
+    description = """
+        1) t1 = create 'reduce_table' table in local mysqld
+        2,3_병렬처리) t2 = insert data to 'reduce_table' table 'id = 101~103' / t3 = insert data to 'reduce_table' table 'id = 104~106'
+    """
+
+)as dag:
+    t1 = SQLExecuteQueryOperator(
+        task_id="airflow_reduce_create_table",
+        sql=create_table,
+        queue="q_name1" # t1을 처리할 큐 이름. airflow.cfg파일의 브로커아이디에 작성한 redis의 q_name1이라는 곳에 작업배치
+    )
+
+    t2 = SQLExecuteQueryOperator(
+        task_id="airflow_reduce_insert_data",
+        sql=insert_data,
+        queue="q_name1"
+    )
+
+    t3 = SQLExecuteQueryOperator(
+        task_id = "airflow_reduce_add_data",
+        sql=add_data,
+        queue="q_name2" #t2을 처리할 큐 이름. airflow.cfg파일의 브로커아이디에 작성한 redis의 q_name2이라는 곳에 작업배치
+    )
+
+t1 >> [t2,t3]
+
+```
+
+위와같이 큐 이름을 지정해주면 스케줄러가 airflow.cfg파일안에 작성한 브로커url를 따라 그곳의 큐 이름과 일치하는곳에 작업을 배치한다.
+그리고 워커들은 쌓인 작업을 처리한다.
+
+Airflow가 분산처리를 하는것을 확인했으니, 이제 본 글의 목표인 airflow+spark+python를 이용한 크롤링 데이터파이프라인을 구축해볼것이다.
+
+spark와 크롤링하는부분을 하나씩 설정해보자.
+
+앞서, 나의 GCP구성은
+
+<u>현재 airflow의 마스터노드역할을하는 인스턴스는 spark의 마스터노드 역할도 겸임한다. 또한, 이곳에는 elasticsearch와 airflow의 메타데이터역할을하는 mysql도 함께 운영되고있다.</u>
+
+나는 Spark,Hadoop을 이미 마스터 노드,워커 노드에 모두 설치하여 분산환경을 구축해줬으므로 설치에관해서는 건너뛰겠다.
+
+이제, 크롤링에 필요한 드라이버와 패키지를 다운로드받아주고 간단한 크롤링, 그리고 전처리를 테스팅해보고 프로젝트에 필요한 사이트를 일정주기마다 크롤링하는 코드를 작성해보겠다.
+
+
+나는 크롤링을하기위해 **Selenium**과 **Firefox**, **geckodriver**, spark를 동작을 쉽게보기위해 재플린노트북을 설치할것이다.
+
+(GCP는 웹브라우저가없으니까..)
+
+
+```python
+
+마스터를 철저히 분리시키고싶다면 크롤링도구들을 설치하지않아도되지만, 나는 마스터에도 일단 설치해주겠다.
+
+[마스터, 워커 공통 = Selenium,Firefox,geckodriver / 마스터 = spark 작업확인용 재플린노트북]
+
+#나는 GUI를 사용하지않는 GCP를사용하고있으니 터미널로 Fierfox를 다운로드받아줄것이다.
+
+sudo add-apt-repository ppa:ubuntu-mozilla-security/ppa
+
+sudo apt-get update
+
+sudo apt-get install firefox -y
+
+#firefox 버전확인
+
+firefox -v
+
+Mozilla Firefox 117.0
+
+위와같이 나오면 성공.
+
+
+#selenium설치
+## wget을 이용하여 수동으로 설치하는법이있고 pip 를 이용하여 설치하는방법도있다.나는 pip를 이용하여 설치를 진행했다.
+
+pip install selenium
+
+#fierfox용 웹드라이버 geckodriver 설치
+
+https://github.com/mozilla/geckodriver/releases
+
+위의 링크에서 각 OS에맞는 패키지의 링크를 복사해와서 wget으로 다운로드받아준다.
+
+tar.gz이므로, 압축을해제한다
+
+tar xvzf geckodriver-v0.33.0-linux64.tar.gz
+
+위의 패키지들을 모두 받아줬으면 크롤링을 실행해보자.
+```
+
+### 간단한 크롤링 테스트
+
+```python
+#Daily Gaewon
+#반려동물 상식을 반려동물기사 사이트에서 크롤링
+
+
+from selenium import webdriver
+from selenium.webdriver.firefox.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver import FirefoxOptions
+from selenium.common.exceptions import NoSuchElementException
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from pyspark.sql import *
+from pyspark.sql.functions import regexp_replace
+from pyspark.sql.functions import col
+import re
+
+
+webdriver_service = Service('/usr/bin/geckodriver') #(윈도우)경로를 \ 로 복사하지말고, /로변경해줄것.
+
+opts = FirefoxOptions()
+opts.add_argument("--headless")
+# opts.binary_location = r'C:\Program Files\Mozilla Firefox\firefox.exe'#(윈도우)에러,moz:firefoxOptions.binary를 해결하기위해, 파이어폭스 경로를 수동지정.
+#browser = webdriver.Firefox(service=webdriver_service, options=opts) -> 셀레니움이 최신버전으로 업데이트되면서 드라이버경로지정이필요없어졌다.
+
+browser = webdriver.Firefox(options=opts)
+
+# 한 페이지내에서 모든 뉴스의 갯수만큼 타이틀 / 링크를 따로추출하여 두개의 리스트에 저장.
+dailygaewon_list=[] #뉴스정보를 저장할 리스트
+dailygawon_link=[] #본문링크만 저장할 리스트(본문크롤링에 필요하기에 따로 저장)
+
+#페이지를 순환할 for문 / 데일리개원에 미디어 페이지를 크롤링해온다.
+for pages in range(1,7): #6페이지까지니까 +1해서 7 / 또한 원래 페이지의 URL이 page={n}&total=nnn&sc_section_code=~이지만,total은 늘 변하는값이므로, 빼줬다.빼줘도 작동지장x
+    base_url = f"http://www.dailygaewon.com/news/articleList.html?page={pages}&sc_section_code=&sc_sub_section_code=S2N30&sc_serial_code=&sc_area=&sc_level=&sc_article_type=&sc_view_level=&sc_sdate=&sc_edate=&sc_serial_number=&sc_word=&box_idxno=&sc_multi_code=&sc_is_image=&sc_is_movie=&sc_order_by=E"
+    browser.get(base_url)
+
+    #페이지 내의 모든 기사의 갯수를추출하여 변수로 저장
+    all_news=browser.find_elements(By.CLASS_NAME,"table-row")
+    all_news_num=len(all_news)
+    
+    #기사의 길이만큼 for문을 반복해서 타이틀, 링크를 따로 추출
+    for all_news_n in range(1,all_news_num+1): #1~19까지만 작동되니까 +1을해서 갯수를맞춰줌
+        news_title=browser.find_element(By.XPATH,f"//*[@id='user-container']/div[3]/div[2]/section/article/div[2]/section/div[{all_news_n}]/div[1]/a/strong").text
+        news_link=browser.find_element(By.XPATH,f"//*[@id='user-container']/div[3]/div[2]/section/article/div[2]/section/div[{all_news_n}]/div[1]/a").get_attribute("href")
+        dailygaewon_list.append([news_title,news_link])
+        dailygawon_link.append(news_link) #이것은 데이터 프레임으로 만들지 x
+# print(dailygaewon_list)
+# print(news_link)
+
+
+#링크도 데이터프레임에 추가했음.
+dailygawon_contents=[]
+for dailygawon_links in dailygawon_link:
+    browser.get(dailygawon_links)
+    news_cont_title=browser.find_element(By.XPATH,f"//*[@id='user-container']/div[3]/header/div/div").text
+    news_cont=browser.find_element(By.CSS_SELECTOR,"div#article-view-content-div").text
+    news_date=browser.find_element(By.XPATH,f"//*[@id='user-container']/div[3]/header/section/div/ul/li[2]").text
+    dailygawon_contents.append([news_cont_title,news_cont,news_date,dailygawon_links])
+    # print(dailygawon_contents)
+    
+# print(dailygaewon_list)
+print(dailygawon_contents)
+browser.quit()   
 ```
 
 
