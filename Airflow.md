@@ -823,7 +823,8 @@ spark와 크롤링하는부분을 하나씩 설정해보자.
 
 나는 크롤링을하기위해 **Selenium**과 **Firefox**, **geckodriver**, spark를 동작을 쉽게보기위해 재플린노트북을 설치할것이다.
 
-(GCP는 웹브라우저가없으니까..)
+사실 재플린노트북같은경우는 airflow로 스파크를작동시키기전 코드에 이상이있는지, 데이터에 이상이있는지 확인하기위해 설치하는것이다.
+하지만 spark를 실행시켜 spark-submit을 통해 동작확인을해도되지만, 조금 더 가독성이 좋다는 부분에서 재플린을 사용하기로했다.
 
 
 ```python
@@ -850,9 +851,10 @@ Mozilla Firefox 117.0
 
 
 #selenium설치
-## wget을 이용하여 수동으로 설치하는법이있고 pip 를 이용하여 설치하는방법도있다.나는 pip를 이용하여 설치를 진행했다.
+## wget을 이용하여 수동으로 설치하는법이있고 pip 를 이용하여 설치하는방법도있다. airflow를 이용하여 spark,크롤링을할것이므로 conda명령어를 이용하여 설치하였다.
 
-pip install selenium
+conda install -c conda-forge selenium -y
+
 
 #fierfox용 웹드라이버 geckodriver 설치
 
@@ -935,5 +937,66 @@ print(dailygawon_contents)
 browser.quit()   
 ```
 
+※오류
 
+Pyspark에서 셀레니움을 모듈을 불러오지못하는 오류를만났다.
+하지만 일반 python에서는 셀레니움 모듈이 잘 불러와졌다.
+
+마스터,워커1,2 파이썬버전, 셀레니움버전, 에어플로우 버전 모두 같으며 실행환경도 에어플로우 가상환경에서 실행했는데 왜 못찾아오는건지 이해되지않아서 불러오는 경로를 확인해봤다.
+
+```python
+
+일반 python
+
+import selenium
+import requests
+import inspect
+print(inspect.getfile(selenium))
+
+-> 
+/home/{유저명}/anaconda3/envs/env명/lib/python3.9/site-packages/selenium/__init__.py
+
+->
+/home/{유저명}/anaconda3/envs/env명/lib/python3.9/site-packages/requests/__init__.py
+
+위와같이 경로를 반환한다. 그럼 pyspark에서 불러와지는 모듈의 경로와 셀레니움이같은곳에있으면 경로의 문제가아니라고 생각했다.
+
+그래서 requests모듈은 pyspark,일반 python 두곳 모두에서 잘 불러와져서 이 모듈을가지고 각각 pyspark와 python경로를 비교해보았다.
+
+
+pyspark
+
+import requests
+import inspect
+print(inspect.getfile(selenium))
+
+->
+/usr/lib/python3/dist-packages/requests/__init__.py
+
+경로가 다르다.
+아무래도 pyspark가 참고하는 경로에 셀레니움이없어서 못불러오는것같다.
+그렇가면 두가지방법을 할수있다.
+
+1.pyspark가 참조하는 경로를바꾼다.
+2.pyspark가 참조하는 경로에 셀레니움을 옮겨준다.
+
+아나콘다위에 올려진 가상환경에서 airflow를 실행할것이고, pip, conda를 통해 다운로드받을때마다 패키지를 옮겨주긴 너무 귀찮은일이다.. 그래서 나는 pyspark가 참조하는 경로를 바꿔주기로했다.
+
+export PYSPARK_PYTHON =/usr/bin/python3 (기존)
+ -> /home/napetservicecloud/anaconda3/bin/python3
+
+export PYSPARK_DRIVER_PYTHON =/usr/bin/python3 (기존)
+-> /home/napetservicecloud/anaconda3/bin/python3
+
+pyspark가 참조하여 실행될 환경을 지정해주는 부분인것같다. 만약 주피터 노트북에서 pyspark를 사용하려면 저기에 주피터노트북을 작성해주면된다.
+
+이제 pyspark를 켜서 셀레니움을 작동시켜보자
+
+import selenium
+>>
+
+잘된다!
+
+
+```
 

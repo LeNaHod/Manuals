@@ -302,6 +302,12 @@ spark/sbin/start-worker.sh [복사한masterURL]
 단,해당작업을할때는 워커로사용하고싶은 서버로 이동해서 사용한다.
 (만약같은 서버,인스턴스에서 사용시 동일한 컴퓨터 내부에서 메모리를할당하고 분산처리를하게된다.)
 
+
+# spark/sbin 아래의 start-all.sh(Hadoop아님)
+
+spark/sbin아래에있는 start-all.sh를 실행시켰을시, start-master.sh / start-workers.sh가 실행된다.
+즉 저 위의 두개가 같이 실행된다.
+
 ```
 
 ![Standalone_spark_webUI](./spark분산.PNG)
