@@ -888,13 +888,20 @@ from pyspark.sql import *
 from pyspark.sql.functions import regexp_replace
 from pyspark.sql.functions import col
 import re
+import time
 
+#시간측정을위해 사용.
+
+start_time=time.time()
+
+#web드라이버 지정. 셀레니움 4버전대부터는 셀레니움이 알아서 웹드라이버를 불러오기때문에 사용하지않는 옵션이다.
 
 webdriver_service = Service('/usr/bin/geckodriver') #(윈도우)경로를 \ 로 복사하지말고, /로변경해줄것.
 
 opts = FirefoxOptions()
 opts.add_argument("--headless")
 # opts.binary_location = r'C:\Program Files\Mozilla Firefox\firefox.exe'#(윈도우)에러,moz:firefoxOptions.binary를 해결하기위해, 파이어폭스 경로를 수동지정.
+
 #browser = webdriver.Firefox(service=webdriver_service, options=opts) -> 셀레니움이 최신버전으로 업데이트되면서 드라이버경로지정이필요없어졌다.
 
 browser = webdriver.Firefox(options=opts)
@@ -934,7 +941,9 @@ for dailygawon_links in dailygawon_link:
     
 # print(dailygaewon_list)
 print(dailygawon_contents)
-browser.quit()   
+browser.quit()
+print("크롤링에 걸린시간:" time.time() - start_time) # 현재시각 -시작시간 =실행시간
+
 ```
 
 ※오류
@@ -983,20 +992,210 @@ print(inspect.getfile(selenium))
 아나콘다위에 올려진 가상환경에서 airflow를 실행할것이고, pip, conda를 통해 다운로드받을때마다 패키지를 옮겨주긴 너무 귀찮은일이다.. 그래서 나는 pyspark가 참조하는 경로를 바꿔주기로했다.
 
 export PYSPARK_PYTHON =/usr/bin/python3 (기존)
- -> /home/napetservicecloud/anaconda3/bin/python3
+ -> home/{유저명}/anaconda3/envs/{가상환경명}/bin/python3.9
 
 export PYSPARK_DRIVER_PYTHON =/usr/bin/python3 (기존)
--> /home/napetservicecloud/anaconda3/bin/python3
+-> home/{유저명}/anaconda3/envs/{가상환경명}/bin/python3.9
 
-pyspark가 참조하여 실행될 환경을 지정해주는 부분인것같다. 만약 주피터 노트북에서 pyspark를 사용하려면 저기에 주피터노트북을 작성해주면된다.
+pyspark가 참조하여 실행될 환경을 지정해주는 부분인것같다. 
+
+export PYSPARK_DRIVER_PYTHON_OPTS="jupyternotebook"
+만약 주피터 노트북에서 pyspark를 사용하려면 저기에 주피터노트북을 작성해주면된다.
 
 이제 pyspark를 켜서 셀레니움을 작동시켜보자
 
 import selenium
 >>
 
-잘된다!
+잘된다! 아나콘다위의 파이썬과 기존의 파이썬이자꾸섞여서 꽤 오랜시간 시간을 잡아먹었다....
+이제 다른 오류를 해결한다면 데이터 파이프라인이 완성될것같다.
 
+
+이제 hdfs와 spark가 잘 연결되어있는지, 상호작용을하는지 확인하기위해 hdsf에 파일을 가공하여 올리고 불러와보겠다.
+
+여기서 "hdfs:://ip:포트"는, 하둡 마스터노드의 내부통신(데몬)포트이다. 웹UI로 접속하는 포트로하면안된다...
+
+ data = spark.read.csv("hdfs://<ip>:<port><hdfs파일경로>/test.csv", header ="true", inferSchema="true")
+ 
+ data.show(30)
+
+ +-------------------+--------------------------+-------------------------------+----------------+----------------+
+|        artist_name|                store_name|                        address|             lot|             lat|
++-------------------+--------------------------+-------------------------------+----------------+----------------+
+| Rebornraum_Leather|                  리본라움|  서울 송파구 마천로 148 (오...|127.135710129128|37.5041950340569|
+|         마렌드로잉|                마렌드로잉|서울 마포구 모래내로 5 (성산...|126.903687766741|37.5642548691608|
+.
+.
+..
+
+위와같이 잘불러와진다. 하지만 불편하다. 재플린 노트북으로 불러와서 사용해도되지만 vscord로 불러도될것같긴한데..조금 고민이된다.
+
+일단 30개만 불러온것을 저장해서 hdfs에 올려보자
+
+data.coalesce(1).write.format("com.databricks.spark.csv").option("header", "true").save("hdfs://master:9000/user/
+spark_test/Idus_save_test.csv")
+
+coalesce(1) -> 일단1로했지만 나는 분산환경이니 나중에 늘려야겠다.
+일단 테스트는 1로한다.
+
+하둡에 들어갑니 잘 저장되어있다.
+
+
+이제 위의 크롤링+전처리+저장코드를 실행시켜보자.
+하지만 위의 코드는 크롤링이 잘 되어가고있는지 과정을 보기가어렵다. 물론 print문으로 하나의 기사를 가져올때마다 출력하게해도되지만, 사실 재플린노트북이나 주피터노트북을 사용하여 이용하는편이 상태를 알아보기가 더 편하긴하다.
+
+아래는 한개의 사이트에서 기사를 크롤링+전처리+저장 까지하는 코드이다.
+이 코드로 미리 테스트를해보고 다른 사이트도 추가하여, 에어플로우로 각 워커에 작업을 나눠줄것이다.
+
+#테스트 코드 전체
+
+    #Daily Gaewon
+    #반려동물 상식을 반려동물기사 사이트에서 크롤링
+
+    import selenium
+    from selenium import webdriver
+    from selenium.webdriver.firefox.service import Service
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.common.keys import Keys
+    from selenium.webdriver import FirefoxOptions
+    from selenium.common.exceptions import NoSuchElementException
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+    from pyspark.sql import *
+    from pyspark.sql.functions import regexp_replace
+    from pyspark.sql.functions import col
+    import re
+    import time
+    from pyspark.context import SparkContext
+    from pyspark.sql.session import SparkSession
+
+
+    #spark사용을위한 세션생성. 나는 pyspark 를 master(yarn)으로 실행해볼것이다.
+
+    spark = SparkSession.builder.master("yarn").appName("deliy_test").getOrCreate()
+    # .master("local[*]") = 연결할 Spark master URL을 설정한다. ex) 로컬에서 실행될때 "local", 4개의 core로 로컬에서 실행될때 "local[4]". []가 코어갯수
+
+    #.appName=s Spark Web UI에서 보여질 어플리케이션 이름.
+    
+
+    # 시간 측정을위한 start_time선언
+    start_time=time.time()
+
+    webdriver_service = Service('/home/napetservicecloud/geckodiver') #(윈도우)경로를 \ 로 복사하지말고, /로변경해줄것.
+
+    opts = FirefoxOptions()
+    opts.add_argument("--headless")
+    # opts.binary_location = r'C:\Program Files\Mozilla Firefox\firefox.exe'#(윈도우)에러,moz:firefoxOptions.binary를 해결하기위해, 파이어폭스 경로를 수동지정.
+    browser = webdriver.Firefox(options=opts)
+    #
+    # 한 페이지내에서 모든 뉴스의 갯수만큼 타이틀 / 링크를 따로추출하여 두개의 리스트에 저장.
+    dailygaewon_list=[] #뉴스정보를 저장할 리스트
+    dailygawon_link=[] #본문링크만 저장할 리스트(본문크롤링에 필요하기에 따로 저장)
+
+    #페이지를 순환할 for문 / 데일리개원에 미디어 페이지를 크롤링해온다.
+    for pages in range(1,8): #7페이지까지있으니까 7+1=8 / 또한 원래 페이지의 URL이 page={n}&total=nnn&sc_section_code=~이지만,total은 늘 변하는값이므로, 빼줬다.빼줘도 작동지장x
+        base_url = f"http://www.dailygaewon.com/news/articleList.html?page={pages}&sc_section_code=&sc_sub_section_code=S2N30&sc_serial_code=&sc_area=&sc_level=&sc_article_type=&sc_view_level=&sc_sdate=&sc_edate=&sc_serial_number=&sc_word=&box_idxno=&sc_multi_code=&sc_is_image=&sc_is_movie=&sc_order_by=E"
+        browser.get(base_url)
+
+        #페이지 내의 모든 기사의 갯수를추출하여 변수로 저장
+        all_news=browser.find_elements(By.CLASS_NAME,"table-row")
+        all_news_num=len(all_news)
+        
+        #기사의 길이만큼 for문을 반복해서 타이틀, 링크를 따로 추출
+        for all_news_n in range(1,all_news_num+1): #1~19까지만 작동되니까 +1을해서 갯수를맞춰줌
+            news_title=browser.find_element(By.XPATH,f"//*[@id='user-container']/div[3]/div[2]/section/article/div[2]/section/div[{all_news_n}]/div[1]/a/strong").text
+            news_link=browser.find_element(By.XPATH,f"//*[@id='user-container']/div[3]/div[2]/section/article/div[2]/section/div[{all_news_n}]/div[1]/a").get_attribute("href")
+            dailygaewon_list.append([news_title,news_link])
+            dailygawon_link.append(news_link) #이것은 데이터 프레임으로 만들지 x
+    print(len(dailygaewon_list))
+    print(len(news_link))
+
+
+    #링크도 데이터프레임에 추가했음.
+    dailygawon_contents=[]
+    for dailygawon_links in dailygawon_link:
+        browser.get(dailygawon_links)
+        news_cont_title=browser.find_element(By.XPATH,f"//*[@id='user-container']/div[3]/header/div/div").text
+        news_cont=browser.find_element(By.CSS_SELECTOR,"div#article-view-content-div").text
+        news_date=browser.find_element(By.XPATH,f"//*[@id='user-container']/div[3]/header/section/div/ul/li[2]").text
+        dailygawon_contents.append([news_cont_title,news_cont,news_date,dailygawon_links])
+        print(dailygawon_contents)
+        
+    # print(dailygaewon_list)
+    print(dailygawon_contents)
+    print(len(dailygawon_contents))
+    browser.quit()   
+
+    #========크롤링종료=========
+
+    #Spark 가공,전처리부분
+
+    dailygaewon_index = ["title","main","date","url"]
+    dailygaewon_data= spark.createDataFrame(dailygawon_contents,dailygaewon_index)
+    dailygaewon_data.createOrReplaceTempView("dailygaewon")
+    dailygaewon_data.show()
+
+    #main컬럼
+    main_p=dailygaewon_data.select(col("title"),regexp_replace(col("main"),'[■\n※-▶◆▼●▲『』]'," ").alias("main"),regexp_replace(col("date"),'승인',"").alias("date"),col("url"))
+
+    #title컬럼
+    title_p=main_p.select(regexp_replace(col("title"),'\[[^)]*\]',"").alias("title"),col("main"),regexp_replace(col("date"),'\[[^)]*\]',"").alias("date"),col("url"))
+    title_p.show()
+
+    #특정문자를 삭제하고 DF에 id를 부여
+    dailygaewon_wordcount_x=title_p.rdd.zipWithIndex().toDF()
+    final_dailygaewon_df_wordx=dailygaewon_wordcount_x.select(col("_2").alias("id"),col("_1.*")) #_2가 id. id가앞에오게 _2를 먼저부름
+    final_dailygaewon_df_wordx.show()
+
+    #하둡에저장할때 파티션을 나누지않고 병합
+    final_dailygaewon_df_wordx.coalesce(1).write.options(header='True', delimiter=',', encoding="cp949").csv("/user/dailygaewon_final_url.csv")
+
+    print("총 걸린시간은 : ",time.time()-start_time)
+
+    #세션종료
+    spark.stop()
+
+#실행
+spark-submit deliy_test.py
+
+#결과
+총 걸린시간은 :  296.2208170890808 (단위 초. 약5분)
+
+hdfs에도 잘 저장되는것을 확인했다. 하지만 조금 찾아보다가 spakr-submit을 사용할때 여러모드가있다는것을 알게되었다. deploy-mode를 지정하지않으면 클라이언트 모드가 디폴트라고한다.
+그래서 클러스터 모드로 실행하면 무엇이달라질지 궁금해서 클러스터 모드로 실행시켜보았다.
+```
+
+![spark-submit_Test1](./spark/spark_submit_Test.PNG)
+
+```python
+#실행2
+spark-submit --master yarn --deploy-mode cluster deliy_test.py
+
+#결과2
+
+         client token: N/A
+         diagnostics: N/A
+         ApplicationMaster host: slave02
+         ApplicationMaster RPC port: 38851
+         queue: default
+         start time: 1694188132208
+         final status: SUCCEEDED
+         tracking URL: http://master:8088/proxy/application_1694186077256_0002/
+         user: user_name
+2023-09-08 15:53:55,135 INFO util.ShutdownHookManager: Shutdown hook called
+2023-09-08 15:53:55,137 INFO util.ShutdownHookManager: Deleting directory /tmp/spark-1c2f87e9-3eca-47ab-8b73-8e42350dfe25
+2023-09-08 15:53:55,162 INFO util.ShutdownHookManager: Deleting directory /tmp/spark-502b6bf5-a496-4fe0-85eb-22adaf01f71e
+
+결과화면은 전혀 다르게나왔지만, hdfs에 제대로 작성된것은 확인하였다.
+
+또한 slave01,slave02둘 다 각각의 메모리를 사용하는것을 확인하였다.
+그래서 start 시간과 finish 시간을 비교해보니 5분으로 두개다 비슷하게나온걸 알수있었다.
+
+하지만 아직도 궁금증이 덜풀려서 spark conf에서 설정한것과 spark-submit 쉘 명령어 옵션이 뭐가 다른거지? 라고 찾아보니 spark-submit 쉘 명령어가 가장 우선순위가 높게 처리된다는것을알수있었다.
+
+어쩐이 python내부에서 .appname을 지정하고 spark-submit 쉘 명령어에서 --name옵션을 사용해서 이름을 지정했을때 쉘 명령어에서 지정한 이름으로 웹에 제출되는것을알수있었다.
+
+그렇지만 이로써 알게된것은 spark-submit 쉘 명령어 옵션을 안쓰면 spark conf파일에 설정한값을 기본값으로 가져간다는것을 알수있었다.
 
 ```
 
