@@ -1161,7 +1161,8 @@ spark-submit deliy_test.py
 #결과
 총 걸린시간은 :  296.2208170890808 (단위 초. 약5분)
 
-hdfs에도 잘 저장되는것을 확인했다. 하지만 조금 찾아보다가 spakr-submit을 사용할때 여러모드가있다는것을 알게되었다. deploy-mode를 지정하지않으면 클라이언트 모드가 디폴트라고한다.
+hdfs에도 잘 저장되는것을 확인했다. 하지만 조금 찾아보다가 spakr-submit을 사용할때 여러모드가있다는것을 알게되었다. 
+deploy-mode를 지정하지않으면 클라이언트 모드가 디폴트라고한다.
 그래서 클러스터 모드로 실행하면 무엇이달라질지 궁금해서 클러스터 모드로 실행시켜보았다.
 ```
 
@@ -1172,7 +1173,6 @@ hdfs에도 잘 저장되는것을 확인했다. 하지만 조금 찾아보다가
 spark-submit --master yarn --deploy-mode cluster deliy_test.py
 
 #결과2
-
          client token: N/A
          diagnostics: N/A
          ApplicationMaster host: slave02
@@ -1197,5 +1197,191 @@ spark-submit --master yarn --deploy-mode cluster deliy_test.py
 
 그렇지만 이로써 알게된것은 spark-submit 쉘 명령어 옵션을 안쓰면 spark conf파일에 설정한값을 기본값으로 가져간다는것을 알수있었다.
 
+하둡에 저장된 파일을 SPARK로 읽어와보자
+
++---+-------------------------------------+----------------------------------+----------------+--------------------+
+| id|                                title|                              main|            date|                 url|
++---+-------------------------------------+----------------------------------+----------------+--------------------+
+|  0|       잇따르는 고양이 AI 확진 ‘비...|  네이처스로우 사료 2종 제품 회...|2023.08.11 15:00|http://www.dailyg...|
+|  1|      '반려견 사업 고수익 보장' 폰...| 반려견 테마파크 등 반려동물 플...|2023.07.23 08:00|http://www.dailyg...|
+|  2|      보호소 탈을 쓴 ‘신종 펫숍’ 논란|동물보호소를 사칭한 신종 펫숍들...|2023.07.11 08:00|http://www.dailyg...|
+|  3|     “해외 신약 빠른 도입 체계개선...|      지난 5월 19일 열린 ‘제3차...|2023.06.13 08:00|http://www.dailyg...|
+|  4|      캣맘이 둔 사료로 ‘저녁 한 끼...| 길고양이 사료 먹이는 견주 행동...|2023.04.21 12:11|http://www.dailyg...|
+|  5|     우군(友軍) 많지 않은 수의계 단체|최근 정부가 인체의약품 제조시설...|2023.04.21 11:18|http://www.dailyg...|
+|  6| 동물의료개선 위한 동물병원 희생 안돼|농림축산식품부가 ?동물의료 개선...|2023.04.12 07:00|http://www.dailyg...|
+|  7|              “도대체 개는 왜 키우나”| 잇따르는 반려동물 학대 사건…수...|2023.03.28 09:00|http://www.dailyg...|
+|  8|       2% 아쉬운 ‘반려산업동물의료팀’|지난해 말 농림축산식품부는 조직...|2023.03.24 11:49|http://www.dailyg...|
+|  9|       ‘태종 이방원’ 말 학대 사건,...|  검역본부, 동물 학대 여부 판단...|2023.03.09 14:04|http://www.dailyg...|
+| 10|     증가하는 수의대 중도 탈락, 해...|학령인구는 급격히 감소하고 있고...|2023.03.09 13:55|http://www.dailyg...|
++---+-------------------------------------+----------------------------------+----------------+--------------------+
+
+뉴스 사이트에 들어가봤더니, 제대로 크롤링되어 잘 적재된것을 확인했다.
+
+여러 환경에서 같은 python파일을 실행해보니, yarn모드로 분산처리되는것이 가장 이상적이라고 판단되어 spark-submit의 클러스터 모드와 함께 사용해야겠다.
+
+※ Spark가 돌고있을때만  tracking URL에 접속할수있었다(원래그런건가..?)
+또한 나는 spark-submit을 사용하였기때문에, 크롤링코드가 오래걸렸고 스파크가 분산처리되는 순간이 지금은 매우 짧아서 금방 지나갔다.
+여기에 여러 사이트들에서 크롤링한 기사를 모으면 스파크를 yarn모드에서 분산처리하는 의미가있을것같다.
+
+# Django 웹 서비스가 이용중인 MysqlDB에 적재하는 코드를 추가하자
+
+크롤링->전처리->Hadoop/mysql 적재 까지 하는 코드를 추가해보자.
+위의 코드는 크롤링->전처리->Hadoop적재 까지였으니 Mysql에 데이터를 적재하는 코드만 추가하면된다.
+
+
+    #spark = SparkSession.builder.master("yarn").getOrCreate() ▼ 아래처럼 바꿔줌
+    spark = SparkSession.builder.config("spark.jars", "mysql-connector-java-8.0.33.jar").master("yarn").getOrCreate()
+
+    user='mysql_user_name'
+    password='mysql_user_paasword'
+    url='jdbc:mysql://{ip}:{port}/{db_name}'
+    driver='com.mysql.cj.jdbc.Driver'
+    dbtable='table_name'
+
+    저장할DF명.write.jdbc(url,dbtable,"append",properties={"driver":driver, "user":user,"password":password})
+
+※Spark세션을 생성할때, .config()안에 내용을 작성하기 전 'mysql-connector-j-8.0.33.jar'가 
+/usr/share/java/mysql-connector-j-8.0.31.jar 와 같이 해당 경로에 파일이있어야하며, spark-defaults.conf에 'spark.jars /usr/share/java/mysql-connector-j-8.0.31.jar' 해당 내용을 추가해놓으면 좋다.(이건 선택.)
+
+단, spark-defaults.conf에 mysql-connector에 대한 내용을 추가하지않았으면 spark-submit을 사용할때 별도로 connector를 지정해줘야한다.
+
+#spark-submit이용
+    --master yarn 
+    --jars /path/to/mysql/connector/mysql-connector-java-8.0.33.jar
+    OR --packages mysql:mysql-connector-java:8.0.33 로 이용할수있다.
+
+# 번외로 mysql->spark 로 불러올때, 아래와같이 .option("query"~)를 이용해 sql쿼리문을 사용하여 원하는데이터만 가져올수있다.
+
+    df = spark.read \
+    .format("jdbc") \
+    .option("query", "select id,age from employee where gender='M'")
 ```
+
+### 완성된 테스트 코드
+
+아래 코드는 전체 코드중 한개의 뉴스사만 크롤링하고 전처리, 적재하는 코드이므로 이제 이 코드를 토대로 여러 뉴스사의 구조에맞게 코드를 작성하여 airflow를통해 총 4개의 뉴스사에서 뉴스를 수집해올것이다.
+
+```python
+#Daily Gaewon
+#반려동물 상식을 반려동물기사 사이트에서 크롤링
+
+import selenium
+from selenium import webdriver
+from selenium.webdriver.firefox.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver import FirefoxOptions
+from selenium.common.exceptions import NoSuchElementException
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from pyspark.sql import *
+from pyspark.sql.functions import regexp_replace
+from pyspark.sql.functions import col
+import re
+import time
+from pyspark.context import SparkContext
+from pyspark.sql.session import SparkSession
+
+
+
+#spark세션생성
+
+spark = SparkSession.builder.config("spark.jars", "mysql-connector-java-8.0.33.jar").master("yarn").getOrCreate()
+
+#시간측정
+start_time=time.time()
+
+#webdriver_service = Service('/home/napetservicecloud/geckodiver') #(윈도우)경로를 \ 로 복사하지말고, /로변경해줄것.
+
+opts = FirefoxOptions()
+opts.add_argument("--headless")
+# opts.binary_location = r'C:\Program Files\Mozilla Firefox\firefox.exe'#(윈도우)에러,moz:firefoxOptions.binary를 해결하기위해, 파이어폭스 경로를 수동지정.
+browser = webdriver.Firefox(options=opts)
+#
+# 한 페이지내에서 모든 뉴스의 갯수만큼 타이틀 / 링크를 따로추출하여 두개의 리스트에 저장.
+dailygaewon_list=[] #뉴스정보를 저장할 리스트
+dailygawon_link=[] #본문링크만 저장할 리스트(본문크롤링에 필요하기에 따로 저장)
+
+#페이지를 순환할 for문 / 데일리개원에 미디어 페이지를 크롤링해온다.
+for pages in range(1,8): #7페이지까지있으니까 7+1=8 / 또한 원래 페이지의 URL이 page={n}&total=nnn&sc_section_code=~이지만,total은 늘 변하는값이므로, 빼줬다.빼줘도 작동지장x
+    base_url = f"http://www.dailygaewon.com/news/articleList.html?page={pages}&sc_section_code=&sc_sub_section_code=S2N30&sc_serial_code=&sc_area=&sc_level=&sc_article_type=&sc_view_level=&sc_sdate=&sc_edate=&sc_serial_number=&sc_word=&box_idxno=&sc_multi_code=&sc_is_image=&sc_is_movie=&sc_order_by=E"
+    browser.get(base_url)
+
+    #페이지 내의 모든 기사의 갯수를추출하여 변수로 저장
+    all_news=browser.find_elements(By.CLASS_NAME,"table-row")
+    all_news_num=len(all_news)
+    
+    #기사의 길이만큼 for문을 반복해서 타이틀, 링크를 따로 추출
+    for all_news_n in range(1,all_news_num+1): #1~19까지만 작동되니까 +1을해서 갯수를맞춰줌
+        news_title=browser.find_element(By.XPATH,f"//*[@id='user-container']/div[3]/div[2]/section/article/div[2]/section/div[{all_news_n}]/div[1]/a/strong").text
+        news_link=browser.find_element(By.XPATH,f"//*[@id='user-container']/div[3]/div[2]/section/article/div[2]/section/div[{all_news_n}]/div[1]/a").get_attribute("href")
+        dailygaewon_list.append([news_title,news_link])
+        dailygawon_link.append(news_link) #이것은 데이터 프레임으로 만들지 x
+print(len(dailygaewon_list))
+print(len(news_link))
+
+
+#링크도 데이터프레임에 추가했음.
+dailygawon_contents=[]
+for dailygawon_links in dailygawon_link:
+    browser.get(dailygawon_links)
+    news_cont_title=browser.find_element(By.XPATH,f"//*[@id='user-container']/div[3]/header/div/div").text
+    news_cont=browser.find_element(By.CSS_SELECTOR,"div#article-view-content-div").text
+    news_date=browser.find_element(By.XPATH,f"//*[@id='user-container']/div[3]/header/section/div/ul/li[2]").text
+    news_press="DailyGaewon" #뉴스사 추가
+    dailygawon_contents.append([news_cont_title,news_cont,news_press,dailygawon_links,news_date])
+print(dailygawon_contents)
+    
+# print(dailygaewon_list)
+print(dailygawon_contents)
+print(len(dailygawon_contents))
+browser.quit()   
+
+#========크롤링종료=========
+
+#Spark 가공,전처리부분
+
+dailygaewon_index = ["title","main","press","url","write_date"]
+dailygaewon_data= spark.createDataFrame(dailygawon_contents,dailygaewon_index)
+dailygaewon_data.createOrReplaceTempView("dailygaewon")
+dailygaewon_data.show()
+
+#main컬럼
+main_p=dailygaewon_data.select(col("title"),regexp_replace(col("main"),'[■\n※-▶◆▼©●▲『』]'," ").alias("main"),col("press"),col("url"),regexp_replace(col("write_date"),'승인',"").alias("write_date"))
+
+#title컬럼
+title_p=main_p.select(regexp_replace(col("title"),'\[[^)]*\]',"").alias("title"),col("main"),col("press"),col("url"),regexp_replace(col("write_date"),'\[[^)]*\]',"").alias("write_date"))
+#title_p.show()
+
+#특정문자를 삭제하고 DF에 id를 부여
+dailygaewon_wordcount_x=title_p.rdd.zipWithIndex().toDF()
+final_dailygaewon_df_wordx=dailygaewon_wordcount_x.select((col("_2")+1).alias("id"),col("_1.*")) #_2가 id. id가앞에오게 _2를 먼저부름. 그리고 0부터 부여되는 id값 전체에 1을 더해줘서 1부터 시작하게만든다.
+
+#final_dailygaewon_df_wordx.show()
+
+#하둡에저장할때 파티션을 나누지않고 병합
+final_dailygaewon_df_wordx.coalesce(1).write.options(header='True', delimiter=',', encoding="cp949").csv("/user/dailygaewon_final_url.csv")
+
+#Mysql에 저장
+user='user_name'
+password='user_password'
+url='jdbc:mysql://<ip>:<port>/<db_name>'
+driver='com.mysql.cj.jdbc.Driver'
+dbtable='table_name'
+
+final_dailygaewon_df_wordx.write.jdbc(url,dbtable,"append",properties={"driver":driver, "user":user,"password":password})
+
+#appen = 추가
+#overwrite = 덮어쓰기
+#errorifexists = 이미 다른파일이 존재할경우 오류를 발생시킴
+
+#save()는 선택. .jdbc까지만써도 실행잘됨
+
+# 총 걸린시간 출력문
+print("총 걸린시간은 : ",time.time()-start_time)
+
+#스파크 세션종료
+spark.stop()
+```
+
 
