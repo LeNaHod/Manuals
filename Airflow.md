@@ -1375,7 +1375,7 @@ final_dailygaewon_df_wordx.write.jdbc(url,dbtable,"append",properties={"driver":
 #overwrite = 덮어쓰기
 #errorifexists = 이미 다른파일이 존재할경우 오류를 발생시킴
 
-#save()는 선택. .jdbc까지만써도 실행잘됨
+#save()는 스칼라용. pyton을사용하는 나에게는 x
 
 # 총 걸린시간 출력문
 print("총 걸린시간은 : ",time.time()-start_time)
@@ -1383,5 +1383,25 @@ print("총 걸린시간은 : ",time.time()-start_time)
 #스파크 세션종료
 spark.stop()
 ```
+![spark-submit-mysql](./spark/spark_submit_mysql_save1.PNG)
 
+mysql에 수집한 데이터가 spark전처리 과정을 거처 잘 적재되었다.
+
+그렇다면, 이제 언론사를 더 추가하여 여러곳에서 데이터를 수집해오자.
+
+초기엔 언론사1+_언론사2+언론사3+...=기사테이블  의 구조로 언론사별로 따로 저장하고 후에 취합하는 구조로 설계하였는데
+
+전처리과정이 비슷한 부분이많아서 한개의 DF에 언론사1,2,3의 수집데이터를 한번에 추가하고 하나의 기사테이블로 이용할것이다.
+만약 언론사별로 가공이 필요하다면 press로 기사를 언론사별로 구분할수있기때문에 가공이 필요할때 분리해서 가공하는 방법을 채택했다.
+
+
+
+**에어플로우를 이용해서 spark-submit 코드가 잘작동하는지 확인**
+
+```python
+
+
+
+
+```
 
