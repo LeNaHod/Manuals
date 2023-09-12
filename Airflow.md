@@ -1195,7 +1195,7 @@ spark-submit --master yarn --deploy-mode cluster deliy_test.py
 
 어쩐이 python내부에서 .appname을 지정하고 spark-submit 쉘 명령어에서 --name옵션을 사용해서 이름을 지정했을때 쉘 명령어에서 지정한 이름으로 웹에 제출되는것을알수있었다.
 
-그렇지만 이로써 알게된것은 spark-submit 쉘 명령어 옵션을 안쓰면 spark conf파일에 설정한값을 기본값으로 가져간다는것을 알수있었다.
+그렇지만 이로써 알게된것은 Spark 내부에서 명령어를 처리하는 우선순위는 Shell > 파일 > Conf 기본설정 순으로 지정되어있다는것을 알수있었다.
 
 하둡에 저장된 파일을 SPARK로 읽어와보자
 
@@ -1219,9 +1219,6 @@ spark-submit --master yarn --deploy-mode cluster deliy_test.py
 
 여러 환경에서 같은 python파일을 실행해보니, yarn모드로 분산처리되는것이 가장 이상적이라고 판단되어 spark-submit의 클러스터 모드와 함께 사용해야겠다.
 
-※ Spark가 돌고있을때만  tracking URL에 접속할수있었다(원래그런건가..?)
-또한 나는 spark-submit을 사용하였기때문에, 크롤링코드가 오래걸렸고 스파크가 분산처리되는 순간이 지금은 매우 짧아서 금방 지나갔다.
-여기에 여러 사이트들에서 크롤링한 기사를 모으면 스파크를 yarn모드에서 분산처리하는 의미가있을것같다.
 
 # Django 웹 서비스가 이용중인 MysqlDB에 적재하는 코드를 추가하자
 
@@ -1394,7 +1391,92 @@ mysql에 수집한 데이터가 spark전처리 과정을 거처 잘 적재되었
 전처리과정이 비슷한 부분이많아서 한개의 DF에 언론사1,2,3의 수집데이터를 한번에 추가하고 하나의 기사테이블로 이용할것이다.
 만약 언론사별로 가공이 필요하다면 press로 기사를 언론사별로 구분할수있기때문에 가공이 필요할때 분리해서 가공하는 방법을 채택했다.
 
+하지만 꽤 테스트하는데 시간이 걸려서, 시간을 단축하고자 Spark가 사용할수있는 코어 및 메모리를 조절해줬다.
+Standalon 과 yarn 모드 둘다 설정해줬다.
 
+<u>spark 메모리 및 코어 설정 </u>
+
+```bash
+
+#[master,worker노드 전부]
+#spark-defaults.conf
+
+spark.master            yarn
+spark.eventLog.enabled  true
+spark.eventLog.dir      hdfs://master:9000/spark
+spark.jars              /usr/share/java/mysql-connector-j-8.0.33.jar
+spark.driver.memory     6g
+
+
+#[master노드만]
+
+# web master
+
+export SPARK_MASTER_HOST=master
+export SPARK_MASTER_WEBUI_PORT=18080
+
+# worekr-Standalone
+
+export SPARK_WORKER_DIR=${SPARK_WORKER_DIR:-$SPARK_HOME/work}
+export SPARK_WORKER_WEBUI_PORT=18081
+export SPARK_WORKER_INSTANCES=2
+export SPARK_WORKER_CORES=4
+export SPARK_WORKER_MEMORY=6g
+
+
+# yarn mode Memory
+
+export SPARK_DRIVER_MEMOR=6g
+export SPARK_EXECUTOR_MEMORY=6g
+export SPARK_EXECUTOR_CORES=4
+
+#python ->이 옵션같은경우에는 마스터에만 해주면된다고하지만,나는 워커에서도 잠깐 pyspark를 쓸일있을까싶어서설정해둠
+
+export PYSPARK_PYTHON={path}/anaconda3/envs/{env_name}/bin/python3.9
+export PYSPARK_DRIVER_PYTHON={path}/anaconda3/envs/{env_name}/bin/python3.9
+
+```
+
+설정 전 기본값으로 test code를 실행해본결과 = 33분
+설정 후 test code를 실행해본결과 = 12분
+
+굉장히 빨라진것을 확인할수있었다.
+
+하지만 8GB이상으로 메모리를 할당하였더니, 에러를 반환한다.
+보니까 실행구조가 YARN모드를 통해 SPARK-SUBMIT을 실행시켜 신청서를 제출하면 설정값에따라 YARN에서 SPARK_APP을 실행시킬수있는 컨테이너를 제공한다. 또한 이 컨테이너의 기본값은 **8GB**이다. 
+기본값을 바꿔주려면 <u>yarn-site.xml</u>을 편집해줘야한다. 
+
+그러므로 spark의 메모리와 코어수를 지정할때는 한개의 노드가 사용할수있는 최대 메모리로 설정하면안되고 어느정도 여유를 두고 설정해줘야한다.(하둡이나 os등 spark외의 프로그램들도 메모리를 사용해야하니까)
+
+    아래와같이 spark-env.sh를 설정한다면 익스큐터는 한개, 하나의 익스큐더가 사용할수있는 메모리는 18, 드라이버가 사용하는 메모리는 4 가되므로 해당 노드의 한개의 익스큐터가 총 18+4 =22의 메모리를 사용하게된다.
+
+    SPARK_EXECUTOR_INSTANCES = 1
+    SPARK_EXECUTOR_MEMORY = 18G
+    SPARK_DRIVER_MEMORY = 4G
+
+또한, yarn에서 컨테이너를 제공할때 0.5gb정도의 여유를 두고 제공하는것같다.
+위처럼 18g를 사용한다고 설정해두면 18.5정도가되는것
+
+yarn-site.xml -> yarn.scheduler.maximum-allocation-mb 옵션은 **하나의 컨테이너의 메모리**를 설정해주는 옵션이다.
+
+yarn.nodemanager.resource.memory-mb 옵션은 **전체 컨테이너의 메모리**를 설정해주는 옵션이다.
+
+즉 노드매니저 리소스메모리가 10G이면 1G짜리 컨테이너를 10개만들수있고, 2G짜리 컨테이너를 5개만들어 제공할수있다.
+스케쥴러 맥시멈 옵셥은 하나의 컨테이너가 가질수있는 최대값이다. 기본값 8G이니까 8GB이상을 요구하는 앱이나 설정을 실행시킬수없다.
+
+나는 아래와같이 설정해주었다.
+
+    [yarn-site.xml]
+    <property>
+        <name>yarn.nodemanager.resource.memory-mb</name>
+        <value>12000</value>
+    </property>
+    <property>
+        <name>yarn.scheduler.maximum-allocation-mb</name>
+        <value>10000</value>
+    </property>
+
+이제 본격적으로 에어플로우로 자동화를 시켜보자.
 
 **에어플로우를 이용해서 spark-submit 코드가 잘작동하는지 확인**
 
