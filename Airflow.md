@@ -1777,7 +1777,7 @@ final_sbs_wordx.coalesce(1).write.options(header='True', delimiter=',', encoding
 
 ## 데이터프레임 병합
 
-###id제거 이후 로드해서 불러올때 파일가져오는 변수명 꼭 바꿔주기!
+### HDSF에 업로드된것을 불러오기
 kbs_idx=final_kbs_df_wordx.select(col("title"),col("main"),col("press"),col("url"),col("write_date"))
 sbs_idx=final_sbs_wordx.select(col("title"),col("main"),col("press"),col("url"),col("write_date"))
 kukmin_idx=final_kukmin_df_wordx.select(col("title"),col("main"),col("press"),col("url"),col("write_date"))
@@ -1820,4 +1820,128 @@ print("총 걸린시간은 : ",time.time()-start_time)
 spark.stop()
 
 ```
+
+### Airflow에서 SSH를 써보자
+
+이 파트를 만든이유는, Airflow에서 ssh통신을 사용하려면 통신을 등록해줘야한다는것을 알아서 만들었다.
+
+나는, airflow를 통해 worker-1,2에서 수집한 크롤링 데이터파일을 Master노드에 보내, Spark를 통해 전처리를하도록 설계하였다.
+
+하지만, Bash Operator를 통해 worker-1 에서 **scp명령어를 사용했을때, 에러가 발생하였다.**
+난 이미 마스터-워커1-워커2 사이에 포트포워딩이 끝나있고 ssh키 교환을 마쳤기때문에 당연히 될줄알았는데 그게아니였다.
+
+
+그래서 찾아보니 airflow에 ssh통신을 위한 기본적인 정보를 등록해줘야한다는것을 알았다.
+
+ssh통신을 하는 방법으로 여러 오퍼레이터가있었는데
+
+- SSHOperator : ssh통신을 하기위해 사용되는 오퍼레이터
+- SFTPOperator : sftp 통신을 하기위해 사용되는 오퍼레이터. 파일을 내보내고 받아오는데 사용됨
+- SSHHook : ssh_conn_id를 대체함. 
+
+약간 찾아본결과 각 오퍼레이터가 위와같은 상황에 사용되는것을 알수있었다.
+그렇지만 내가 정말 헷갈렸던부분은 ssh통신을 위해 사용되는 오퍼레이터가아니라, 오퍼레이터 내부에서 사용되는 ssh_conn_id /ssh_hook부분이였다. 즉 ssh 통신을 위한 정보를 등록하는 부분이 조금 어려웠다.
+
+왜냐하면 SSH KEY의 정보를 제대로 등록해도 DSA로 분류되어 너무길다는 오류를 반환하였기때문이다.
+
+왜 이러한 오류가 생기는지 아직 찾지못했지만, 일단 SSHOOK를 사용해 오류를 해결하고 통신에 성공하였다.
+
+ssh_conn_id 는 통신할 정보를 담고있는 id이다.
+
+Airflow WEB >  Connection 탭에서 추가해줘야한다.
+
+### SSH_CONN_ID을 등록하는법
+
+
+![SSH_CONN_ID등록법](/airflow/SSH_CONN_ID.PNG)
+
+각 항목을 살펴본다면
+
+- Connection Id : SSH_COON_ID의 이름이 될 부분
+- Connection Type : SSHOperator를 사용할거면 SSH, SFTP를 사용할거면 SFTP. (근데 SFTP를 사용하는데 SSH로 해도 통신은되었다.)
+
+- HOST : ★ 연결할 HOST의 IP. 즉 Remote IP라고 생각하면된다. 로컬경로,IP는 해당 TASK가 실행되는 서버의 정보를 따르므로, 여기엔 원격지의 정보를 넣는다.
+ 
+- USERNAME : 통신할 HOST의 유저 ID. root,계정명
+- Password : Username의 passwd. 없으면 입력하지않아도 무관
+- Port : SSH가 실행되고있는 포트
+
+- Extra : SSH 통신을 사용할때 적용할 각종 옵션들을 { 키: 밸류 키2:밸류2} 형식으로 넣을수있다. 옵션은 AIRFLOW 공식홈페이지 참조. 나는 아래와같은 옵션을 추가해주었다.
+
+    {
+    "no_host_key_check": "True"
+    }
+
+    원래는 SSH KEY의 경로, HOST_KEY라고해서 ./ssh 아래의 known_hosts에 등록되어있는 해당 키의 정보도 입력해줘야하지만, 나는 오히려 그것들을 입력하면 키가 DSA로 분류되어 너무 길다는 오류만을 잔뜩받았다.
+
+    "disabled_algorithms": {"pubkeys": ["rsa-sha2-256", "rsa-sha2-512"]}, 라는 옵션을 추가하여 해당 키를 매핑해주면 문제가 해결될것같은데 나중에 실험해봐야겠다.(Known_hosts의 앞에 rsa-sha2-256, 512 같은 종류가 적혀있던데, 이것과 관련있지않을까싶다.)
+    
+    하지만 paramiko.ssh_exception.SSHException: No hostkey for host 오류가 난다면 
+
+    {
+    "key_file": "/usr/local/airflow/.ssh/id_rsa.pub", 
+    "no_host_key_check": true
+    }
+
+    위 처럼 키의 경로를 등록해줘야할수도있다.
+
+[SFTP참고자료](http://www.kwangsiklee.com/2022/01/airflow-localsftp-sensor-%EC%8B%A4%EC%8A%B5%ED%95%B4%EB%B3%B4%EA%B8%B0/)
+
+[AIRFLOW_SSH](https://airflow.apache.org/docs/apache-airflow-providers-ssh/stable/connections/ssh.html)
+
+### SSHHOOK를 이용하는법
+
+SSHHOOK를 이용하는 방법은 스크립트파일내에서 선언하는방법으로 AIRFLOW_WEB Connection에 ID를 등록하지않는 방법이다.
+
+```python
+
+from airflow import DAG
+from datetime import datetime, timedelta
+from airflow.providers.ssh.hooks.ssh import SSHHook
+
+default_args = { 
+    'owner' : 'name', 
+    'depends_on_past': False,
+    'retires': 1,
+    'retry_delay': timedelta(minutes=5)
+}
+
+ssh_hook = SSHHook(remote_host='ip', username='user_name', port=ssh_port)
+
+#remote_host -> 원격지의 ip
+#username -> 연결할 유저명(root,계정명 등)
+#port -> ssh 서비스가 이용중인 포트
+
+with DAG( 
+    'scp_test', #dag id
+    default_args = default_args,
+    schedule = '@once',
+    start_date = datetime(2023, 9, 15),
+    catchup = False,
+    tags = ['sftp','ssh','test']
+
+)as dag:
+
+    t1 =  SSHOperator(
+        task_id ="scp-test-bash",
+        ssh_hook=ssh_hook,
+        command="echo success!", #원격지에서 작업할 커맨드. 배쉬커맨드와 비슷한 역할을한다.
+        queue = "worker-1"
+    )
+
+★만약 ssh_hook말고 ssh_conn_id를 사용할거면
+
+    ssh_conn_id = "airflow-web에등록한 conn id명"
+    
+이렇게 입력해주면된다.
+
+```
+
+위와 같은 task를 실행하게된다면 worker-1이라는 큐 이름을 전담하는 worker들이 해당 큐에 들어온 t1의 작업을하게된다.
+
+그렇게된다면 로컬은 worker-1이되는거고 원격지는 ssh_hook에 등록된 master가 되게된다. 그럼 master node에서 echo success! 커맨드를 입력하게되어, success!라는 출력결과가나온다.
+
+![ssh_oprator](./airflow/ssh_oprator.PNG)
+
+
 
