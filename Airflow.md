@@ -341,8 +341,14 @@ dag_default_view = grid
 #1868번째 (선택)
 catchup_by_default = True
 ->False
+#1143번째 (선택)
+default_queue = default
+->default_queue = airflow-master
 
 airflow가 버전이 업데이트되면서 WEBUI의 기본 VIEW가 grid로 설정되어있다. 나는 그래프로보고싶으니 그래프로 바꿔준다.
+
+또한 기본적으로 큐 지정을안하면 redis의 default 큐로보내버리니, 기본큐를 airflow-master라고 바꿔주었다.
+
 
 ```
 
@@ -1866,9 +1872,24 @@ Airflow WEB >  Connection 탭에서 추가해줘야한다.
 - Password : Username의 passwd. 없으면 입력하지않아도 무관
 - Port : SSH가 실행되고있는 포트
 
-- Extra : SSH 통신을 사용할때 적용할 각종 옵션들을 { 키: 밸류 키2:밸류2} 형식으로 넣을수있다. 옵션은 AIRFLOW 공식홈페이지 참조. 나는 아래와같은 옵션을 추가해주었다.
+- Extra : SSH 통신을 사용할때 적용할 각종 옵션들을 { 키: 밸류 키2:밸류2} 형식으로 넣을수있다. 옵션은 AIRFLOW 공식홈페이지 참조. 이 부분엔 위에서 작성한 원격지에 접근할 ssh 개인키의 정보를 넣어준다.
+
+**★EX-워커1에서 마스터노드1에 접근하려면, HOST에 마스터노드1의 IP. Extra에 워커1의 ssh개인 키 경로 및 정보를 넣어준다. (물론 마스터노드와 키 교환은 미리 되어있어야한다.)**
+
+
+    나는 각 워커노드에 ssh키의 이름이 기본값도아니고 다 다르기때문에 master노드에 대한 연결을 따로 두개 생성하였다. ( master-1 , master-2 )
+
+    [master-1]
+    
+    {
+    "key_file":"path/.ssh/워커1의개인키명",
+    "no_host_key_check": "True"
+    }
+
+    [master-2]
 
     {
+    "key_file":"path/.ssh/워커2의개인키명",
     "no_host_key_check": "True"
     }
 
@@ -1879,7 +1900,7 @@ Airflow WEB >  Connection 탭에서 추가해줘야한다.
     하지만 paramiko.ssh_exception.SSHException: No hostkey for host 오류가 난다면 
 
     {
-    "key_file": "/usr/local/airflow/.ssh/id_rsa.pub", 
+    "key_file": "/usr/local/airflow/.ssh/id_rsa", 
     "no_host_key_check": true
     }
 
@@ -1915,8 +1936,8 @@ ssh_hook = SSHHook(remote_host='ip', username='user_name', port=ssh_port)
 with DAG( 
     'scp_test', #dag id
     default_args = default_args,
-    schedule = '@once',
-    start_date = datetime(2023, 9, 15),
+    schedule = '@daily',
+    start_date = datetime(2023, 9, 15),#스케쥴에 올라가는시간. 시작시간X
     catchup = False,
     tags = ['sftp','ssh','test']
 
@@ -1944,4 +1965,505 @@ with DAG(
 ![ssh_oprator](./airflow/ssh_oprator.PNG)
 
 
+이제 news기사를 자동수집하는 데이터파이프라인의 전체적인 코드와 그림을 본다.
+
+```python
+
+#/*****셀레니움 관련******/
+
+import selenium
+from selenium import webdriver
+from selenium.webdriver.firefox.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver import FirefoxOptions
+from selenium.common.exceptions import NoSuchElementException
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import re
+import time
+import pandas as pd
+
+
+#/*****에어플로우 관련*****/
+
+from airflow import DAG
+from datetime import datetime, timedelta
+from airflow.contrib.operators.ssh_operator import SSHOperator
+from airflow.providers.ssh.hooks.ssh import SSHHook
+from airflow.operators.bash_operator import BashOperator
+from airflow.operators.python_operator import PythonOperator
+from email.policy import default
+from textwrap import dedent
+import csv
+from airflow.operators.dummy import DummyOperator
+from airflow.utils.task_group import TaskGroup
+
+
+#=============================================================
+
+#airflow 기본 args 선언
+
+default_args = { 
+    'owner' : 'gcp_master', 
+    'depends_on_past': False,
+    'retires': 1
+    #'retry_delay': timedelta(minutes=5)
+}
+
+#경로,현재시간 포맷지정
+path='/home/napetservicecloud'
+time_stamp_format=datetime.now().strftime('%y%m%d_%H')
+#=============Daily Gaewon 크롤링 =============
+
+#시간측정
+start_time=time.time()
+
+#셀레니움 옵션지정
+def dailygaewonc():
+    opts = FirefoxOptions()
+    opts.add_argument("--headless")
+    browser = webdriver.Firefox(options=opts)
+
+    # 한 페이지내에서 모든 뉴스의 갯수만큼 타이틀 / 링크를 따로추출하여 두개의 리스트에 저장.
+    dailygaewon_list=[] #뉴스정보를 저장할 리스트
+    dailygawon_link=[] #본문링크만 저장할 리스트(본문크롤링에 필요하기에 따로 저장)
+
+    #페이지를 순환할 for문 / 데일리개원에 미디어 페이지를 크롤링해온다.
+    for pages in range(1,8): #7페이지까지있으니까 7+1=8 / 또한 원래 페이지의 URL이 page={n}&total=nnn&sc_section_code=~이지만,total은 늘 변하는값이므로, 빼줬다.빼줘도 작동지장x
+        base_url = f"http://www.dailygaewon.com/news/articleList.html?page={pages}&sc_section_code=&sc_sub_section_code=S2N30&sc_serial_code=&sc_area=&sc_level=&sc_article_type=&sc_view_level=&sc_sdate=&sc_edate=&sc_serial_number=&sc_word=&box_idxno=&sc_multi_code=&sc_is_image=&sc_is_movie=&sc_order_by=E"
+        browser.get(base_url)
+
+        #페이지 내의 모든 기사의 갯수를추출하여 변수로 저장
+        all_news=browser.find_elements(By.CLASS_NAME,"table-row")
+        all_news_num=len(all_news)
+        
+        #기사의 길이만큼 for문을 반복해서 타이틀, 링크를 따로 추출
+        for all_news_n in range(1,all_news_num+1): #1~19까지만 작동되니까 +1을해서 갯수를맞춰줌
+            news_title=browser.find_element(By.XPATH,f"//*[@id='user-container']/div[3]/div[2]/section/article/div[2]/section/div[{all_news_n}]/div[1]/a/strong").text
+            news_link=browser.find_element(By.XPATH,f"//*[@id='user-container']/div[3]/div[2]/section/article/div[2]/section/div[{all_news_n}]/div[1]/a").get_attribute("href")
+            dailygaewon_list.append([news_title,news_link])
+            dailygawon_link.append(news_link) #이것은 데이터 프레임으로 만들지 x
+    #print(len(dailygaewon_list))
+    print(len(news_link))
+
+
+    #타이틀/ 본문 / 언론사/ url / 작성날짜
+
+    dailygawon_contents=[]
+    for dailygawon_links in dailygawon_link:
+        browser.get(dailygawon_links)
+        news_cont_title=browser.find_element(By.XPATH,f"//*[@id='user-container']/div[3]/header/div/div").text
+        news_cont=browser.find_element(By.CSS_SELECTOR,"div#article-view-content-div").text
+        news_date=browser.find_element(By.XPATH,f"//*[@id='user-container']/div[3]/header/section/div/ul/li[2]").text
+        news_press="DailyGaewon" #뉴스사 추가
+        dailygawon_contents.append([news_cont_title,news_cont,news_press,dailygawon_links,news_date])
+    print(dailygawon_contents)
+        
+    # print(dailygaewon_list)
+    # print(dailygawon_contents)
+    # print(len(dailygawon_contents))
+
+    dailygaewon_index = ["title","main","press","url","write_date"]
+    daliygaewon_csv=pd.DataFrame(dailygawon_contents,columns=dailygaewon_index)
+    daliygaewon_csv.to_csv(f'{path}/crawling/dailygawon_csv_{time_stamp_format}.csv', index=False,encoding="utf-8")
+   
+    browser.quit()
+
+
+#=============Kukmin Ilbo 크롤링 =============
+	
+def kukminc():
+    pagenum=[1,11,21,31,41,51,61,71,81,91,101]
+    opts = FirefoxOptions()
+    opts.add_argument("--headless")
+    browser = webdriver.Firefox(options=opts)
+
+#링크 크롤링
+
+    Kukmin_link=[] #국민일보 본문링크만 담을 리스트
+
+    for links in pagenum:
+        Kukmin_pagelink=f"https://search.naver.com/search.naver?where=news&sm=tab_pge&query=%EB%B0%98%EB%A0%A4%EB%8F%99%EB%AC%BC%20%EB%B3%B5%EC%A7%80&sort=0&photo=0&field=0&pd=0&ds=&de=&cluster_rank=20&mynews=1&office_type=1&office_section_code=1&news_office_checked=1005&nso=so:r,p:all,a:all&start={links}"
+        browser.get(Kukmin_pagelink)
+        all_page_lang=browser.find_elements(By.CLASS_NAME,"dsc_thumb")
+        for cont in all_page_lang:
+            Kukmin_content_link=cont.get_attribute("href") #본문페이지 링크 추출
+            Kukmin_link.append(Kukmin_content_link)
+    #print(len(Kukmin_link))
+
+
+    #타이틀/ 본문 / 언론사/ url / 작성날짜
+
+    Kukmin_main_text=[]
+
+    for Kukmin_links in Kukmin_link:
+        browser.get(Kukmin_links) #본문페이지로 변경
+        try:
+            Kukmin_title=browser.find_element(By.CSS_SELECTOR, "div.nwsti h3").text
+            time.sleep(1)#로딩으로인해 발생하는 error를 줄이기위해 1초 대기
+            Kukmin_main=browser.find_element(By.CLASS_NAME, "tx").text
+            Kukmin_date=browser.find_element(By.CLASS_NAME, "t11").text
+            Kukmin_news_press="KukminIlbo"
+            Kukmin_main_text.append([Kukmin_title,Kukmin_main,Kukmin_news_press,Kukmin_links,Kukmin_date])
+            #print(Kukmin_main_text)
+        except:
+            pass #daily gaewon은 에러가나지않았지만, kbs,sbs,kukmin은 오류가있음
+    #print(Kukmin_main_text)
+    #print(len(Kukmin_main_text))
+
+    Kukmin_index = ["title","main","press","url","write_date"]
+    Kukmin_csv=pd.DataFrame(Kukmin_main_text,columns=Kukmin_index)
+    Kukmin_csv.to_csv(f'{path}/crawling/kukmin_csv_{time_stamp_format}.csv', index=False,encoding="utf-8")
+
+    browser.quit()
+
+#============= KBS =============
+
+def kbsc():
+    pagenum=[1,11,21,31,41,51,61,71,81,91,101]
+    opts = FirefoxOptions()
+    opts.add_argument("--headless")
+    browser = webdriver.Firefox(options=opts)
+
+    kbs_link=[] # KBS 본문링크만 담을 리스트
+    for links in pagenum:
+        kbs_pagelink=f"https://search.naver.com/search.naver?where=news&sm=tab_pge&query=%EB%B0%98%EB%A0%A4%EB%8F%99%EB%AC%BC%20%EB%B3%B5%EC%A7%80&sort=0&photo=0&field=0&pd=0&ds=&de=&cluster_rank=28&mynews=1&office_type=1&office_section_code=2&news_office_checked=1056&nso=so:r,p:all,a:all&start={links}"
+        browser.get(kbs_pagelink)
+        all_page_lang=browser.find_elements(By.CLASS_NAME,"dsc_thumb")
+        for cont in all_page_lang:
+            kbs_content_link=cont.get_attribute("href")
+            kbs_link.append(kbs_content_link)
+
+    #타이틀/ 본문 / 언론사/ URL / 작성날짜
+
+    Kbs_main_text=[]
+
+    for kbs_links in kbs_link:
+        try:
+            browser.get(kbs_links) #본문페이지로 변경
+            time.sleep(1)#로딩으로인해 발생하는 error를 줄이기위해 1초 대기
+            kbs_title=browser.find_element(By.CLASS_NAME, "tit-s").text
+            kbs_main=browser.find_element(By.ID, "cont_newstext").text
+            kbs_date=browser.find_element(By.CLASS_NAME, "date").text
+            kbs_news_press="KBS"
+            Kbs_main_text.append([kbs_title,kbs_main,kbs_news_press,kbs_links,kbs_date])
+        except:
+            pass
+    #print(Kbs_main_text)
+    Kbs_index = ["title","main","press","url","write_date"]
+    Kbs_csv=pd.DataFrame(Kbs_main_text,columns=Kbs_index)
+    Kbs_csv.to_csv(f'{path}/crawling/kbs_csv_{time_stamp_format}.csv', index=False,encoding="utf-8")
+    browser.quit()
+
+#============= SBS =============
+
+def sbsc():
+    pagenum=[1,11,21,31,41,51,61,71,81,91,101]
+    opts = FirefoxOptions()
+    opts.add_argument("--headless")	
+    browser = webdriver.Firefox(options=opts)
+
+    sbs_link=[] 
+    for links in pagenum:
+        sbs_pagelink=f"https://search.naver.com/search.naver?where=news&sm=tab_pge&query=%EB%B0%98%EB%A0%A4%EB%8F%99%EB%AC%BC%20%EB%B3%B5%EC%A7%80&sort=0&photo=0&field=0&pd=0&ds=&de=&cluster_rank=22&mynews=1&office_type=1&office_section_code=2&news_office_checked=1055&nso=so:r,p:all,a:all&start={links}"
+        browser.get(sbs_pagelink)
+        all_page_lang=browser.find_elements(By.CLASS_NAME,"dsc_thumb")
+        for cont in all_page_lang:
+            sbs_content_link=cont.get_attribute("href") 
+            sbs_link.append(sbs_content_link)
+
+    # #======1-2. SBS 크롤링 / 본문내용=============
+
+    # #타이틀/ 본문 / 입력날짜 /URL
+
+    sbs_main_text=[]
+
+    for sbs_links in sbs_link:
+        try:
+            browser.get(sbs_links) 
+            time.sleep(1)
+            sbs_title=browser.find_element(By.ID, "news-title").text
+            sbs_main=browser.find_element(By.CLASS_NAME, "text_area").text
+            sbs_date=browser.find_element(By.CSS_SELECTOR, "div.date_area span").text
+            sbs_press="SBS"
+            sbs_main_text.append([sbs_title,sbs_main,sbs_press,sbs_links,sbs_date])
+        except:
+            pass
+    #print(sbs_main_text)
+
+    sbs_index = ["title","main","press","url","write_date"]
+    sbs_csv=pd.DataFrame(sbs_main_text,columns=sbs_index)
+    sbs_csv.to_csv(f'{path}/crawling/sbs_csv_{time_stamp_format}.csv', index=False,encoding="utf-8")
+
+    browser.quit()
+
+#Airflow dag
+
+with DAG( 
+    'News_pipline', #dag id
+    default_args = default_args,
+    schedule = '@once',
+    start_date = datetime(2023, 9, 16),
+    catchup = False,
+    tags = ['pip_line','spark-submit','spark']
+
+)as dag:#그룹으로 묶지않을 Task
+
+    Start = DummyOperator(
+        task_id = "start",
+        queue = "airflow-master"
+    )
+    
+    End = DummyOperator(
+        task_id = "end",
+        trigger_rule = "all_success"
+    )
+    Master_spark = BashOperator(
+        task_id = "crawling_spark_sbumit",
+        bash_command =f"spark-submit --name 'crawling_spark_submit' --master yarn {path}/airflow-spark-submit-test.py",
+        queue="airflow-master"
+    )
+
+    with TaskGroup(group_id='group_crawling') as Group1:#크롤링하는 Task들을 Group1이라는 이름으로 묶음(as Group1==airflow UI에서 보일 이름)
+        Worker1_1 = PythonOperator(
+            task_id = "daliygawon_crawling",
+            python_callable = dailygaewonc,
+            queue = "airflow-worker-1"
+        )
+
+        Worker1_2 = PythonOperator(
+            task_id = "kbs_crawling",
+            python_callable = kbsc,
+            queue = "airflow-worker-1"
+        )
+
+        Worker2_1 = PythonOperator(
+            task_id = "sbs_crawling",
+            python_callable = sbsc,
+            queue = "airflow-worker-2"
+        )
+
+        Worker2_2 = PythonOperator(
+            task_id = "kukmin_crawling",
+            python_callable = kukminc,
+            queue = "airflow-worker-2"
+        )
+
+        Worker1_3 = SSHOperator(
+            task_id ="worker1_scp",
+            ssh_conn_id="ssh_master",
+            command=f"""
+            scp -T slave01:{path}/crawling/dailygawon_csv_{time_stamp_format}.csv {path}/crawling/
+            scp -T slave01:{path}/crawling/kbs_csv_{time_stamp_format}.csv {path}/crawling/
+            """,
+            queue = "airflow-worker-1"
+        )
+
+        Worker2_3 = SSHOperator(
+            task_id ="worker2_scp",
+            ssh_conn_id="ssh_master2",
+            command=f"""
+            scp -T slave02:{path}/crawling/sbs_csv_{time_stamp_format}.csv {path}/crawling/
+            scp -T slave02:{path}/crawling/kukmin_csv_{time_stamp_format}.csv {path}/crawling/
+            """,
+
+            queue = "airflow-worker-2"
+        )
+
+        Middle_check = DummyOperator(
+            task_id = "middle_check_point",
+            trigger_rule = "all_done"#바로앞 작업들이 성공일때 수행
+        )
+
+
+
+        [Worker1_1 >> Worker1_2 >> Worker1_3, Worker2_1 >> Worker2_2 >> Worker2_3] >> Middle_check
+    
+    Start >> Group1 >>  Master_spark >> End
+    
+
+#scp -T 옵션 = 파일을 가져오거나 내보낼경로에 이스케이프문자를 이용해야할때 규칙검사를 사용안하는 옵션. bahsrc에 등록해서 사용하거나 이스케이프 문자를 쉘에서 직접 처리하거나 -T옵션을 사용할수있다.
+
+```
+
+![airflow배치도](./airflow/airflow_graph.PNG)
+
+
+작성한 코드는 위와같은 airflow배치도를 가진다.
+spark-submit으로 spark전처리-mysql적재까지 하기때문에 airflow에는 크롤링 코드만 사용했다. (크롤링코드도 py파일로 만들수있었지만 굳이 만드는것보단 작성하여 쓰는게 낫다고 판단했다.)
+
+또한 그룹으로 나눠 보기편하게 만들었고 트리거를 이용하여 앞의 작업이 성공하였는지 체크하고 spark전처리를 실행하는 구조를 가졌다.
+
+
+spark 전처리 파일의 내부는 아래와 같다.
+
+```bash
+
+#**********spark 관련**********
+from pyspark.sql import *
+from pyspark.sql.functions import regexp_replace
+from pyspark.sql.functions import col
+from pyspark.context import SparkContext
+from pyspark.sql.session import SparkSession
+import pandas as pd
+from datetime import datetime, timedelta
+import csv
+import re
+import time
+
+#**********기본경로,파일명선언**********
+path='/home/napetservicecloud'
+time_stamp_format=datetime.now().strftime('%y%m%d_%H')
+
+
+#**********SPARK 세션생성**********
+
+spark = SparkSession.builder.config("spark.jars", "mysql-connector-java-8.0.33.jar").master("yarn").getOrCreate()
+
+
+#**********파일 로드**********
+
+#daliygewon pandas read
+daliygaewon_read_pd=pd.read_csv(f"{path}/crawling/dailygawon_csv_{time_stamp_format}.csv")
+dailygaewon_data= spark.createDataFrame(daliygaewon_read_pd)
+dailygaewon_data.createOrReplaceTempView("dailygaewon_news")
+#dailygaewon_data.show()
+
+#kbs pandas read
+kbs_read_pd=pd.read_csv(f"{path}/crawling/kbs_csv_{time_stamp_format}.csv")
+kbs_data= spark.createDataFrame(kbs_read_pd)
+kbs_data.createOrReplaceTempView("Kbs_news")
+#kbs_data.show()
+
+#sbs pandas read
+sbs_read_pd=pd.read_csv(f"{path}/crawling/sbs_csv_{time_stamp_format}.csv")
+sbs_data= spark.createDataFrame(sbs_read_pd)
+sbs_data.createOrReplaceTempView("sbs_news")
+#sbs_data.show()
+
+#kukmin pandas read
+kukmin_read_pd=pd.read_csv(f"{path}/crawling/kukmin_csv_{time_stamp_format}.csv")
+kukmin_data= spark.createDataFrame(kukmin_read_pd)
+kukmin_data.createOrReplaceTempView("Kukmin_news")
+#kukmin_data.show()
+
+#**********daliygewon 가공,전처리부분**********
+
+#main컬럼
+diy_main_p=dailygaewon_data.select(col("title"),regexp_replace(col("main"),'[▷■\n※-▶◆▼©●▲『』]'," ").alias("main"),col("press"),col("url"),regexp_replace(col("write_date"),'승인',"").alias("write_date"))
+
+#title컬럼
+diy_title_p=diy_main_p.select(regexp_replace(col("title"),'\[[^)]*\]',"").alias("title"),col("main"),col("press"),col("url"),regexp_replace(col("write_date"),'\[[^)]*\]',"").alias("write_date"))
+#diy_title_p.show()
+
+#특정문자를 삭제하고 DF에 id를 부여
+dailygaewon_wordcount_x=diy_title_p.rdd.zipWithIndex().toDF()
+final_dailygaewon_df_wordx=dailygaewon_wordcount_x.select((col("_2")+1).alias("id"),col("_1.*")) #_2가 id. id가앞에오게 _2를 먼저부름
+final_dailygaewon_df_wordx.show()
+
+#dailygaewon//하둡에저장할때 파티션을 나누지않고 병합
+final_dailygaewon_df_wordx.coalesce(1).write.options(header='True', delimiter=',', encoding="cp949").csv(f"/user/crawling/dailygaewon_final_url{time_stamp_format}.csv")
+
+
+
+#**********Kukmin Ilbo 가공,전처리부분**********
+
+#main컬럼 전처리 ex)[\n▶▲■▷▼●]'," "
+kuk_main_p=kukmin_data.select(col("title"),regexp_replace(col("main"),'[▷■\n※-▶◆▼©●▲『』]'," ").alias("main"),col("press"),col("url"),regexp_replace(col("write_date"),'승인',"").alias("write_date"))
+
+# title 컬럼
+kuk_title_p=kuk_main_p.select(regexp_replace(col("title"),'\[[^),]*\]',"").alias("title"),col("main"),col("press"),col("url"),regexp_replace(col("write_date"),'\[[^)]*\]',"").alias("write_date"))
+#kuk_title_p.show()
+
+# #id생성문
+kukmin_wordcount_x=kuk_title_p.rdd.zipWithIndex().toDF()
+final_kukmin_df_wordx=kukmin_wordcount_x.select((col("_2")+1).alias("id"),col("_1.*"))
+final_kukmin_df_wordx.show()
+
+#하둡저장
+final_kukmin_df_wordx.coalesce(1).write.options(header='True', delimiter=',', encoding="cp949").csv(f"/user/crawling/kukmin_final_url{time_stamp_format}.csv")
+
+#**********KBS 가공,전처리부분**********
+
+#main컬럼 전처리
+kb_main_p=kbs_data.select(col("title"),regexp_replace(col("main"),'[▷■\n※-▶◆▼©●▲『』]'," ").alias("main"),col("press"),col("url"),regexp_replace(col("write_date"),'입력',"").alias("write_date"))
+
+#title컬럼 전처리
+kb_title_p=kb_main_p.select(regexp_replace(col("title"),'\[[^),]*\]',"").alias("title"),col("main"),col("press"),col("url"),regexp_replace(col("write_date"),'\([^)]*\)',"").alias("write_date"))
+#kb_title_p.show()
+
+#ID생성,CSV파일생성
+kbs_wordcount_x=kb_title_p.rdd.zipWithIndex().toDF()
+final_kbs_df_wordx=kbs_wordcount_x.select((col("_2")+1).alias("id"),col("_1.*"))
+final_kbs_df_wordx.show()
+
+final_kbs_df_wordx.coalesce(1).write.options(header='True', delimiter=',', encoding="cp949").csv(f"/user/crawling/kbs_final_url{time_stamp_format}.csv")
+
+
+#**********SBS 가공,전처리부분**********
+
+
+#main컬럼 전처리
+sb_main_p=sbs_data.select(col("title"),regexp_replace(col("main"),'[\n▶▲■▷▼●\[\]『』©※]'," ").alias("main"),col("press"),col("url"),col("write_date"))
+
+# title 컬럼에대하여 정규식을 사용해 여러문자 제거. []는 특수한문자이므로 이스케이프가 필요하여 앞에 \를 사용. []안에있는 문자들과 일치하면 모두 공백으로변경
+sb_title_p=sb_main_p.select(regexp_replace(col("title"),'[\[,"\]+]',"").alias("title"),col("main"),col("press"),col("url"),regexp_replace(col("write_date"),'\[[^)]*\]',"").alias("write_date"))
+sb_title_p.show()
+
+#id생성,csv파일 생성
+
+sbs_rdd_id=sb_title_p.rdd.zipWithIndex().toDF()
+final_sbs_wordx=sbs_rdd_id.select((col("_2")+1).alias("id"),col("_1.*"))
+final_sbs_wordx.show()
+final_sbs_wordx.coalesce(1).write.options(header='True', delimiter=',', encoding="cp949").csv(f"/user/crawling/sbs_final_url{time_stamp_format}.csv")
+
+
+#**********Mysql드라이버**********
+
+user='db_user'
+password='password'
+url='jdbc:mysql://ip:port/db_name'
+driver='com.mysql.cj.jdbc.Driver'
+dbtable='db_table'
+
+
+
+#**********병합을위한 ID제거**********
+kbs_idx=final_kbs_df_wordx.select(col("title"),col("main"),col("press"),col("url"),col("write_date"))
+sbs_idx=final_sbs_wordx.select(col("title"),col("main"),col("press"),col("url"),col("write_date"))
+kukmin_idx=final_kukmin_df_wordx.select(col("title"),col("main"),col("press"),col("url"),col("write_date"))
+daily_idx=final_dailygaewon_df_wordx.select(col("title"),col("main"),col("press"),col("url"),col("write_date"))
+
+
+#**********병합작업**********
+result_kbs = kbs_idx.select("*").toPandas()
+result_sbs = sbs_idx.select("*").toPandas()
+result_kukmin = kukmin_idx.select("*").toPandas()
+result_daily = daily_idx.select("*").toPandas()
+
+concatDF=pd.concat([result_daily,result_kukmin,result_sbs,result_kbs])
+news_concatdf = spark.createDataFrame(concatDF)
+
+###ID재부여
+
+news_concat_id=news_concatdf.rdd.zipWithIndex().toDF()
+final_newsDF=news_concat_id.select((col("_2")+1).alias("id"),col("_1.*"))
+
+#HDFS에 저장
+
+final_newsDF.coalesce(1).write.options(header='True', delimiter=',', encoding="cp949").csv("/user/crawling/news_final_{time_stamp_format}.csv")
+
+## Mysql에 저장
+
+final_newsDF.write.jdbc(url,dbtable,"overwrite",properties={"driver":driver, "user":user,"password":password})
+
+
+#스파크 세션종료
+spark.stop()
+```
+
+![airflow_graph2](./airflow/airflow_grpah_2.PNG)
+
+모든 Task가 정상적으로 실행되면, 위와같이 초록색으로 보인다.
 
