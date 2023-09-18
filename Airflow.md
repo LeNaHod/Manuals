@@ -2287,7 +2287,7 @@ with DAG(
 
 ```
 
-![airflow배치도](./airflow/airflow_graph.PNG)
+![airflow배치도](./airflow/airflow_graph1.PNG)
 
 
 작성한 코드는 위와같은 airflow배치도를 가진다.
@@ -2466,4 +2466,10 @@ spark.stop()
 ![airflow_graph2](./airflow/airflow_grpah_2.PNG)
 
 모든 Task가 정상적으로 실행되면, 위와같이 초록색으로 보인다.
+
+
+<mark>worker의 로컬에 남아있는 파일을 삭제해주는 Task를 추가하였다. 최종적인 데이터 파이프라인은 아래와같다.</mark>
+
+
+![airflow_graph](./airflow/airflow_graph.PNG)
 
