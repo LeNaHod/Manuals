@@ -38,7 +38,7 @@ X: 작성중,학습중
 |:---:|:---:|:---:|:---:|
 |Mysql|O|X|server.md|
 |Airflow|O|O|X|
-|Pyspark / Spark|O|O|X|
+|Pyspark / Spark|O|O|Airflow.md|
 |Hadoop|O|O|hadoop.md|
 |Zeppelin Notebook|O|O|-|
 |Java|O|-|-|
@@ -48,5 +48,5 @@ X: 작성중,학습중
 |Logstash|O|O|ELK.md|
 |Kafaka|-|-|Kafka.md / △|
 |Doker|O|O|server.md / Doker_manual.md|
-|Zookeeper|-|-|△|
+|Zookeeper|-|-|Zookeeper.md|
 
