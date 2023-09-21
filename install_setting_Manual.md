@@ -204,6 +204,29 @@ jps로 확인
 namenode, datanode, naodemanager , secondaryNameNode, ResourceManager 가 최소
 
 
+8. (번외)가끔 초기설정할때 잘못 설정해서 네임노드와 데이터노드를 여러번 초기화해야할때가 있다.
+
+하지만 이럴때 이미 생성된 네임노드, 데이터노드의 LOG가 있어서 초기화가 정상적으로 이루어지지않을수있다.
+
+나도 초기화를했을때, 데이터노드가 작동하지않아서 꽤 당황했다... 찾아보니 초기화를 다시할때 hdfs의 logs파일과 hdfs 네임노드, 데이터노드 정보를 가지고있는 폴더를 먼저 비워주고 초기화를 진행해주면 된다.
+
+만약 hdfs-sige.xml파일에 hdfs data 폴더 저장경로를 지정했으면 해당 경로로 가서 폴더를 비워주면된다.
+
+Hadoop/conf/hdfs-sige.xml
+
+ <property>
+  <name>dfs.data.dir</name>
+  <value>/data/hdfs/datanode</value> ->사용자 설정에따라 다름. 예시일뿐
+ </property>
+
+
+만약 별도의 설정을하지 않았다면 하둡의 기본설정을 따라 임시파일(temp)에 저장하게된다.
+
+/tmp/hadoop-hadoop/dfs/data
+
+해당 경로는 작업하는 환경에따라 없을수도있으니 설정하기전에 data폴더를 미리 지정하고 관리하는것이 편하다.
+
+
 ```
 
 
