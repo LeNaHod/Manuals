@@ -385,10 +385,12 @@ spark-submit spark_app.py OR python spark_app.py
 
 오류가없으면 pyspark가 정상작동된다.
 
+  결과 >> [Row(sum(id)=500500)]
+
 python spark_app.py 로 실행해도 되는이유는 spark와 pyspark의 버전이맞기때문이다.(pip install pyspark==3.2.2)
 
 ```
-![spark-submin결과](/spark_app_py%EC%8B%A4%ED%96%89%EA%B2%B0%EA%B3%BC.PNG)
+
 
 ↑ spark_app.py가 제대로실행되면 중간쯤에 위와같은 결과가 나온다.
 
@@ -705,6 +707,8 @@ https://dev.mysql.com/downloads/
 
 ↑위 링크에서, Connector/J ->우분투 리눅스 -> 각자맞는 os버전선택 ->다운로드버튼클릭 -> 하단의 No thanks, just start my download 링크 카피 
 (현재 작업우분투 버전은 20.04.5)
+
+wget https://downloads.mysql.com/archives/get/p/3/file/mysql-connector-j_8.0.33-1ubuntu20.04_all.deb
 
 2.압축해제
 
