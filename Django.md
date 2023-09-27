@@ -494,7 +494,7 @@ sudo systemctl enable uwsgi
 
 sudo systemctl restart uwsgi
 
-# 장고 프로젝트내의 ngins 설정파일을 cp 커맨드를 이용하여 nginx폴더안의 sites-available 폴더안에 등록해주자.
+# 장고 프로젝트내의 nginx 설정파일을 cp 커맨드를 이용하여 nginx폴더안의 sites-available 폴더안에 등록해주자.
 
 sudo cp -f /장고프로젝트 경로/.config/nginx/test.conf /etc/nginx/sites-available/test.conf
 
